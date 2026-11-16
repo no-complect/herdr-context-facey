@@ -39,15 +39,17 @@ where the shortcut is available. [Manual installation and layout setup](docs/INS
 ## Understand the numbers
 
 **Last reported input** comes from the provider's latest recorded request.
-Grok Build instead shows **Context estimate**, its own saved context counter.
+Grok instead shows **Context estimate**, its own saved context
+counter, which can include estimates.
 **Captured text** is an estimate using UTF-8 bytes divided by four. The two
 numbers measure different things and can differ substantially.
 
-Claude and AGY group file reads under Tool results and do not separately
-account for startup instructions, memory, or skills. AGY requires a generated
-`transcript.jsonl`; older database-only conversations are unsupported. Grok reads
-retained chat history, which compaction or rewind can replace; earlier usage
-replay and tool definitions outside that history are unavailable. Hidden reasoning and opaque
+Claude and Antigravity group file reads under Tool results and do not separately
+account for startup instructions, memory, or skills. Antigravity requires a
+generated `transcript.jsonl`; older database-only conversations are unsupported.
+Grok reads the retained chat history, which can be replaced by compaction or rewind;
+earlier usage replay and tool definitions outside that history are unavailable.
+Hidden reasoning and opaque
 summaries are excluded from text estimates. Default local session storage only;
 remote sessions and custom storage directories are unsupported.
 
@@ -74,6 +76,8 @@ herdr-app check mods/herdr-context-facey
 
 JavaScript, JSON, and Markdown use Prettier; Python uses Ruff. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for formatting commands and live checks.
+[Architecture and reader protocol](docs/ARCHITECTURE.md) explains the controller,
+provider adapters, and regression-test boundaries.
 [RECIPE.md](RECIPE.md) describes how the mod works and how to rebuild it.
 
 ## License

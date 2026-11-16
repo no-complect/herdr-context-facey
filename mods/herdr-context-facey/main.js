@@ -22,51 +22,34 @@ import {
   reportedUsageAt,
 } from "./model.js";
 import { layoutVisibility } from "./visibility.js";
-import { focusedSession } from "./target.js";
+import { focusedSession, providerNames } from "./target.js";
+import { SessionController } from "./session-controller.js";
+import { createReader } from "./reader-client.js";
 
 const MOD = "herdr-context-facey";
 // Copies share this module, so keyboard-opened dialogs can inherit the panel's
 // selected session without persisting an attachment or any conversation text.
 let panelInstance = null;
 
-async function readSession(request, timeout = 15000) {
-  const result = await exec(
-    "python3",
-    [`${appHome()}/mods/${MOD}/inspect_session.py`, "--request", JSON.stringify(request)],
-    { timeout },
-  );
-  if (result.code !== 0) {
-    throw new Error("The local session reader could not start. Python 3 is required.");
-  }
-  const data = JSON.parse(result.stdout);
-  if (data.error) throw new Error(data.error);
-  return data;
-}
-
 export default class ContextInspector extends View {
   init(_props, cx) {
     const options = props() ?? {};
+    this.session = new SessionController(
+      createReader(exec, `${appHome()}/mods/${MOD}/inspect_session.py`),
+    );
     const attachment = options.overlay ? panelInstance?.attachment() : null;
     this.expandedTarget = options.target ?? attachment?.target;
     this.width = props()?.overlay ? 1100 : 450;
-    this.data = null;
-    this.busy = false;
-    this.error = null;
     this.filter = null;
     this.sort = "timeline";
     this.history = false;
-    this.cutoff = null;
-    this.pinned = null;
-    this.details = null;
-    this.detailKey = null;
-    this.manual = {};
     const selectedPath =
       options.selectedPath ??
       (this.expandedTarget?.address === attachment?.target?.address
         ? attachment?.selectedPath
         : null);
     if (selectedPath && this.expandedTarget?.address) {
-      this.manual[this.expandedTarget.address] = selectedPath;
+      this.session.manual[this.expandedTarget.address] = selectedPath;
     }
     if (!options.overlay) panelInstance = this;
     this.picker = false;
@@ -84,6 +67,7 @@ export default class ContextInspector extends View {
 
   close() {
     this.closed = true;
+    this.session.close();
     this.code?.release();
     if (panelInstance === this) panelInstance = null;
   }
@@ -97,17 +81,7 @@ export default class ContextInspector extends View {
 
   attachment() {
     const target = this.target();
-    return { target, selectedPath: this.manual[target?.address] };
-  }
-
-  targetIdentity(target) {
-    return JSON.stringify([
-      target?.address,
-      target?.provider,
-      target?.title,
-      target?.cwd,
-      this.manual[target?.address],
-    ]);
+    return { target, selectedPath: this.session.manual[target?.address] };
   }
 
   visible() {
@@ -127,96 +101,46 @@ export default class ContextInspector extends View {
     return layoutVisibility(layout(), MOD, props()?.blockId) !== false;
   }
 
-  clearDetail() {
+  syncPreview() {
+    const key =
+      this.session.pinned !== null && this.session.details !== null ? this.session.detailKey : null;
+    const text = key ? this.session.details : null;
+    if (key === this.codeKey && text === this.codeText) return;
     this.code?.release();
     this.code = null;
-    this.details = null;
-    this.detailKey = null;
-    this.pinned = null;
+    this.codeKey = key;
+    this.codeText = text;
+    if (key) {
+      this.code = EditorState.new({
+        language: "text",
+        value: text,
+        readonly: true,
+        font_family: settings().font_family,
+        font_size: 12,
+      });
+    }
   }
 
   refresh(cx, force = false) {
-    if (this.closed) return;
-    if (!force && !this.visible()) return;
-    const target = this.target();
-    const identity = this.targetIdentity(target);
-    if (identity !== this.identity) {
-      this.identity = identity;
-      this.data = null;
-      this.error = null;
-      this.busy = false;
-      this.cutoff = null;
-      this.clearDetail();
-    }
-    if (this.busy || !target) return;
-    if (target.address.includes("/")) {
-      this.error = "Context currently reads local sessions only.";
-      return;
-    }
-    if (!["codex", "claude"].includes(target.provider)) {
-      this.error = "Focus a Codex or Claude Code session to inspect it.";
-      return;
-    }
-    const request = {
-      ...target,
-      path: this.manual[target.address],
-      signature: force ? null : this.data?.signature,
-    };
-    this.busy = true;
+    if (this.closed || (!force && !this.visible())) return;
+    const pending = this.session.refresh(this.target(), force);
+    this.syncPreview();
     cx.spawn(async (cx) => {
-      try {
-        const data = await readSession(request);
-        if (this.closed || identity !== this.identity) return;
-        this.data = data.unchanged ? { ...this.data, ...data } : data;
-        this.error = null;
-      } catch (error) {
-        if (identity === this.identity) this.error = String(error.message || error);
-      } finally {
-        if (identity === this.identity) this.busy = false;
-        cx.notify();
-      }
+      await pending;
+      if (this.closed) return;
+      this.syncPreview();
+      cx.notify();
     });
   }
 
   inspect(event, cx) {
-    const changed = this.pinned !== event.id;
-    this.pinned = event.id;
-    const key = `${this.data?.path}:${event.id}`;
-    if (key === this.detailKey) {
-      if (changed) cx.notify();
-      return;
-    }
-    this.detailKey = key;
-    this.code?.release();
-    this.code = null;
-    this.details = null;
+    const pending = this.session.inspect(event);
+    this.syncPreview();
     cx.spawn(async (cx) => {
-      try {
-        const detail = await readSession(
-          {
-            action: "detail",
-            source: event.source,
-            line: event.line,
-            field: event.field,
-            protected: event.protected,
-          },
-          10000,
-        );
-        if (this.closed || this.detailKey !== key) return;
-        this.details = detail.text || detail.error || "This event has no text preview.";
-        if (detail.truncated) this.details += "\n\n[Preview limited to 24,000 characters]";
-        this.code = EditorState.new({
-          language: "text",
-          value: this.details,
-          readonly: true,
-          font_family: settings().font_family,
-          font_size: 12,
-        });
-      } catch {
-        if (this.detailKey === key) this.details = "The source could not be previewed.";
-      } finally {
-        cx.notify();
-      }
+      await pending;
+      if (this.closed) return;
+      this.syncPreview();
+      cx.notify();
     });
     cx.notify();
   }
@@ -270,7 +194,10 @@ export default class ContextInspector extends View {
             div()
               .text_color(t.muted)
               .text_size(11)
-              .child(this.cutoff === null ? "LAST REPORTED INPUT" : "REPORTED BY THIS POINT"),
+              .child(
+                usage?.label ??
+                  (this.session.cutoff === null ? "LAST REPORTED INPUT" : "REPORTED BY THIS POINT"),
+              ),
           )
           .child(
             div()
@@ -291,8 +218,8 @@ export default class ContextInspector extends View {
               .flex_1()
               .min_w(0)
               .truncate()
-              .tooltip(this.data?.model || "")
-              .child(this.data?.model || "Model not recorded"),
+              .tooltip(this.session.data?.model || "")
+              .child(this.session.data?.model || "Model not recorded"),
           )
           .child(
             div()
@@ -326,7 +253,9 @@ export default class ContextInspector extends View {
           .text_color(t.dim)
           .child(
             usage
-              ? "Reported by the last model request; an in-flight turn may be ahead."
+              ? usage.kind === "context"
+                ? "Grok's recorded context estimate; an in-flight turn may be ahead."
+                : "Reported by the last model request; an in-flight turn may be ahead."
               : "No model usage sample is recorded yet.",
           ),
       );
@@ -366,7 +295,15 @@ export default class ContextInspector extends View {
       .child(
         (this.width < 400 ? v_flex().gap(3) : h_flex().justify_between().gap(8))
           .text_size(11)
-          .child(div().text_color(t.muted).child("CAPTURED TEXT · ESTIMATED"))
+          .child(
+            div()
+              .text_color(t.muted)
+              .child(
+                this.session.data?.partial
+                  ? "CAPTURED TEXT · ESTIMATED · PARTIAL"
+                  : "CAPTURED TEXT · ESTIMATED",
+              ),
+          )
           .child(
             div()
               .text_color(t.foreground)
@@ -410,7 +347,7 @@ export default class ContextInspector extends View {
 
   pickerView(cx) {
     const t = theme(),
-      choices = this.data?.candidates ?? [];
+      choices = this.session.data?.candidates ?? [];
     return v_flex()
       .gap(8)
       .p(10)
@@ -420,12 +357,12 @@ export default class ContextInspector extends View {
         div()
           .text_size(11)
           .text_color(t.muted)
-          .child(this.data?.reason || "Select a recorded session for this terminal."),
+          .child(this.session.data?.reason || "Select a recorded session for this terminal."),
       )
       .child(
         this.button("context-follow", "Follow focused session automatically", (cx) => {
           const target = this.target();
-          if (target) delete this.manual[target.address];
+          if (target) delete this.session.manual[target.address];
           this.picker = false;
           this.refresh(cx, true);
         }),
@@ -446,7 +383,7 @@ export default class ContextInspector extends View {
                 .hover((s) => s.bg(t.hover))
                 .on_click((_e, cx) => {
                   const target = this.target();
-                  if (target) this.manual[target.address] = candidate.path;
+                  if (target) this.session.manual[target.address] = candidate.path;
                   this.picker = false;
                   this.refresh(cx, true);
                   cx.notify();
@@ -533,7 +470,7 @@ export default class ContextInspector extends View {
                 for (let i = range.start; i < range.end; i++) {
                   const event = shown[i],
                     category = categoryOf(event.category),
-                    selected = this.pinned === event.id;
+                    selected = this.session.pinned === event.id;
                   rows.push(
                     v_flex()
                       .id(`event-${event.id}`)
@@ -599,7 +536,7 @@ export default class ContextInspector extends View {
 
   preview(cx) {
     const t = theme(),
-      event = this.data?.events?.find((e) => e.id === this.pinned);
+      event = this.session.data?.events?.find((e) => e.id === this.session.pinned);
     return v_flex()
       .flex_1()
       .min_w(0)
@@ -636,10 +573,10 @@ export default class ContextInspector extends View {
                   .text_color(t.foreground)
                   .child(event.label),
               )
-              .when(Boolean(this.pinned), (e) =>
+              .when(Boolean(this.session.pinned), (e) =>
                 e.child(
                   this.button("context-unpin", "Unpin", () => {
-                    this.pinned = null;
+                    this.session.clearDetail();
                   }),
                 ),
               ),
@@ -662,7 +599,7 @@ export default class ContextInspector extends View {
           )
           .child(
             this.button("context-replay-event", "Replay through this event", () => {
-              this.cutoff = Number(event.id);
+              this.session.cutoff = Number(event.id);
             }),
           )
           .child(
@@ -671,7 +608,7 @@ export default class ContextInspector extends View {
               : div()
                   .text_size(12)
                   .text_color(t.muted)
-                  .child(this.details || "Loading preview…"),
+                  .child(this.session.details || "Loading preview…"),
           ),
       );
   }
@@ -679,10 +616,11 @@ export default class ContextInspector extends View {
   render(cx) {
     const t = theme(),
       target = this.target();
-    const next = this.targetIdentity(target);
-    if (next !== this.identity && this.visible()) this.refresh(cx);
-    const events = selectEvents(this.data, this.cutoff, this.history),
-      usage = reportedUsageAt(this.data, this.cutoff);
+    this.syncPreview();
+    const next = this.session.targetIdentity(target);
+    if (next !== this.session.identity && this.visible()) this.refresh(cx);
+    const events = selectEvents(this.session.data, this.session.cutoff, this.history),
+      usage = reportedUsageAt(this.session.data, this.session.cutoff);
     const wide = this.width > 720;
     const body = (wide ? h_flex().gap(12) : v_flex().gap(10)).items_stretch();
     return v_flex()
@@ -712,12 +650,12 @@ export default class ContextInspector extends View {
               .py(2)
               .rounded(2)
               .bg(t.surface)
-              .text_color(this.cutoff === null ? "#82ac65" : "#d4a75c")
-              .child(this.cutoff === null ? "LIVE" : "REPLAY"),
+              .text_color(this.session.cutoff === null ? "#82ac65" : "#d4a75c")
+              .child(this.session.cutoff === null ? "LIVE" : "REPLAY"),
           )
           .child(div().flex_1())
           .child(
-            this.button("context-refresh", this.busy ? "Reading…" : "Refresh", (cx) =>
+            this.button("context-refresh", this.session.busy ? "Reading…" : "Refresh", (cx) =>
               this.refresh(cx, true),
             ),
           )
@@ -753,28 +691,32 @@ export default class ContextInspector extends View {
             .text_size(10)
             .text_color(t.dim)
             .child(
-              `Following ${target.provider === "claude" ? "Claude Code" : "Codex"} · ${target.address}`,
+              `Following ${providerNames[target.provider] ?? target.provider} · ${target.address}`,
             ),
         ),
       )
-      .when(Boolean(this.error), (el) =>
-        el.child(div().text_size(12).text_color(t.blocked).child(this.error)),
+      .when(Boolean(this.session.error), (el) =>
+        el.child(div().text_size(12).text_color(t.blocked).child(this.session.error)),
       )
-      .when(Boolean(this.data?.reason) || this.picker, (el) => el.child(this.pickerView(cx)))
-      .when(!this.data?.path && !this.data?.reason && !this.error, (el) =>
-        el.child(
-          div()
-            .p(12)
-            .text_size(12)
-            .text_color(t.muted)
-            .child(
-              this.busy
-                ? "Reading the local session…"
-                : "Select a Codex or Claude Code terminal to inspect its recorded context contributions.",
-            ),
-        ),
+      .when(Boolean(this.session.data?.reason) || this.picker, (el) =>
+        el.child(this.pickerView(cx)),
       )
-      .when(Boolean(this.data?.path), (el) =>
+      .when(
+        !this.session.data?.session?.path && !this.session.data?.reason && !this.session.error,
+        (el) =>
+          el.child(
+            div()
+              .p(12)
+              .text_size(12)
+              .text_color(t.muted)
+              .child(
+                this.session.busy
+                  ? "Reading the local session…"
+                  : "Select a Codex, Claude Code, Grok Build or Antigravity CLI terminal to inspect its recorded context contributions.",
+              ),
+          ),
+      )
+      .when(Boolean(this.session.data?.session?.path), (el) =>
         el
           .child(this.gauge(usage))
           .child(this.breakdown(events, cx))
@@ -783,31 +725,37 @@ export default class ContextInspector extends View {
               .gap(5)
               .items_center()
               .flex_wrap()
-              .child(
-                this.button(
-                  "context-segment",
-                  "Since compact",
-                  () => {
-                    this.history = false;
-                  },
-                  !this.history,
-                ),
+              .when(this.session.data.capabilities.compaction, (row) =>
+                row
+                  .child(
+                    this.button(
+                      "context-segment",
+                      "Since compact",
+                      () => {
+                        this.history = false;
+                      },
+                      !this.history,
+                    ),
+                  )
+                  .child(
+                    this.button(
+                      "context-history",
+                      "Whole history",
+                      () => {
+                        this.history = true;
+                      },
+                      this.history,
+                    ),
+                  ),
               )
-              .child(
-                this.button(
-                  "context-history",
-                  "Whole history",
-                  () => {
-                    this.history = true;
-                  },
-                  this.history,
-                ),
+              .when(!this.session.data.capabilities.compaction, (row) =>
+                row.child(div().text_size(11).text_color(t.muted).child("Recorded history")),
               )
               .child(div().flex_1())
-              .when(this.cutoff !== null, (e) =>
+              .when(this.session.cutoff !== null, (e) =>
                 e.child(
                   this.button("context-live", "Back to live", () => {
-                    this.cutoff = null;
+                    this.session.cutoff = null;
                   }),
                 ),
               ),
@@ -846,10 +794,10 @@ export default class ContextInspector extends View {
                 .gap(5)
                 .children(
                   [
-                    this.data.method,
+                    this.session.data.method,
                     "The category bar describes recorded text, not an exact live prompt. Compaction and unrecorded runtime data can make the reported total different.",
-                    `Matched: ${this.data.match}. ${this.data.files} history file(s).`,
-                    ...(this.data.notes || []),
+                    `Matched: ${this.session.data.match}. ${this.session.data.files} history file(s).`,
+                    ...(this.session.data.notes || []),
                   ].map((note) => div().text_size(10).text_color(t.dim).child(note)),
                 ),
             ),

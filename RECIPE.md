@@ -114,7 +114,7 @@ process mapping, or an unambiguous Codex name/recorded continuation. Otherwise
 show the picker. Resolve transcript paths inside each provider's approved default
 local storage and accept only supported transcript paths. Open Codex's SQLite
 index read-only. Grok uses retained `chat_history.jsonl`, its saved update counter
-and known session metadata. AGY uses generated `transcript.jsonl` files in either
+and known session metadata. AGY uses generated `.system_generated/logs/transcript.jsonl` files in either
 default Antigravity app-data directory. Match Grok's event-writer/lock paths and
 AGY's presence-lock paths without reading their contents. Never read provider
 settings or authentication files for discovery.
