@@ -41,7 +41,7 @@ where the shortcut is available. [Manual installation and layout setup](docs/INS
 ## Understand the numbers
 
 **Last reported input** comes from the provider's latest recorded request.
-Grok instead shows **Recorded context · Grok estimate**, its own saved context
+Grok instead shows **Context estimate**, its own saved context
 counter, which can include estimates.
 **Captured text** is an estimate using UTF-8 bytes divided by four. The two
 numbers measure different things and can differ substantially.

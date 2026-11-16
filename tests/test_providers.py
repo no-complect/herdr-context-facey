@@ -237,6 +237,49 @@ class ProviderTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             m.allowed(self.grok, self.home)
 
+    def test_agy_presence_lock_identifies_the_foreground_conversation(self):
+        self.write(self.agy, [dict(type="USER_INPUT", content="hello")])
+        root = self.home / ".gemini/antigravity-cli"
+        presence = root / "presence/agy-session.lock"
+        output = "n" + str(root / "settings.json") + "\nn" + str(presence) + "\n"
+        with patch.object(m.subprocess, "run", return_value=SimpleNamespace(stdout=output)):
+            path, _, reason, matched = m.resolve(dict(provider="agy", pid=123), self.home)
+        self.assertEqual(path, self.agy)
+        self.assertIsNone(reason)
+        self.assertEqual(matched, "Foreground process file")
+        with self.assertRaises(ValueError):
+            m.allowed(presence, self.home)
+
+    def test_grok_event_writer_identifies_the_session_without_reading_its_events(self):
+        self.write(self.grok, [dict(type="user", content="hello")])
+        self.grok_metadata()
+        for name in ["events.jsonl", "chat_history.jsonl.lock", "updates.jsonl.lock"]:
+            output = "n" + str(self.grok.with_name(name)) + "\n"
+            with patch.object(m.subprocess, "run", return_value=SimpleNamespace(stdout=output)):
+                path, _, reason, _ = m.resolve(dict(provider="grok", pid=123), self.home)
+            self.assertEqual(path, self.grok)
+            self.assertIsNone(reason)
+        with self.assertRaises(ValueError):
+            m.allowed(self.grok.with_name("events.jsonl"), self.home)
+
+    def test_multiple_presence_locks_remain_ambiguous(self):
+        self.write(self.agy, [])
+        other = self.write(
+            self.agy.parents[3] / "another-session/.system_generated/logs/transcript.jsonl", []
+        )
+        root = self.home / ".gemini/antigravity-cli/presence"
+        output = (
+            "n"
+            + str(root / "agy-session.lock")
+            + "\nn"
+            + str(root / (other.parents[2].name + ".lock"))
+            + "\n"
+        )
+        with patch.object(m.subprocess, "run", return_value=SimpleNamespace(stdout=output)):
+            path, _, reason, _ = m.resolve(dict(provider="agy", pid=123), self.home)
+        self.assertIsNone(path)
+        self.assertIn("Choose", reason)
+
 
 if __name__ == "__main__":
     unittest.main()

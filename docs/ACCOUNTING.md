@@ -8,7 +8,7 @@ includes cached input, so cached tokens are not added again. Claude's uncached,
 cache-read and cache-creation input counters are separate and are summed.
 Window capacity and percentage appear only when the session records them.
 
-**Grok Build:** the gauge is labeled **Recorded context · Grok estimate**. It
+**Grok Build:** the gauge is labeled **Context estimate**. It
 reads the latest `_meta.totalTokens` from the saved update stream, the same
 estimated context counter used by Grok's pager. It is neither cumulative billed
 usage nor an exact last-input count. Capacity is left unknown. Captured text
@@ -70,6 +70,10 @@ Default local storage only:
   is a different format and is not included in this adapter.
 - Optional `lsof` for foreground-session identification; it is not required when
   another reliable match or a manual selection is available.
+  Grok's open `events.jsonl` or session lock identifies its sibling chat history;
+  AGY's open `presence/<session>.lock` identifies the generated transcript. Only
+  their paths are used; lock files, settings, and event logs are not read. Multiple
+  distinct sessions held by the same process remain ambiguous.
 
 Remote sessions, custom `CODEX_HOME`/`CLAUDE_CONFIG_DIR` storage, subagent context
 aggregation, and complete reconstruction of the provider's prompt are not

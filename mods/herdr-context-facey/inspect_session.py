@@ -224,6 +224,22 @@ def canonical_session(path, home, provider):
     return path
 
 
+def process_session(path, home, provider):
+    """Use known open-file identities without reading lock files or database contents."""
+    path = Path(path).expanduser().resolve()
+    if provider == "grok":
+        root = (home / ".grok/sessions").resolve()
+        if path.is_relative_to(root) and len(path.relative_to(root).parts) == 3:
+            if path.name in ("events.jsonl", "chat_history.jsonl.lock", "updates.jsonl.lock"):
+                return canonical_session(path.with_name("chat_history.jsonl"), home, provider)
+    elif provider == "agy":
+        for root in agy_roots(home):
+            if path.parent == (root / "presence").resolve() and path.suffix == ".lock":
+                transcript = root / "brain" / path.stem / ".system_generated/logs/transcript.jsonl"
+                return canonical_session(transcript, home, provider)
+    return canonical_session(path, home, provider)
+
+
 def session_id(path, home):
     provider = provider_of(path, home)
     if provider == "grok":
@@ -370,9 +386,9 @@ def resolve(request, home):
             )
             opened = []
             for line in proc.stdout.splitlines():
-                if line.startswith("n") and line.endswith(".jsonl"):
+                if line.startswith("n"):
                     try:
-                        p = canonical_session(line[1:], home, provider)
+                        p = process_session(line[1:], home, provider)
                         if p.is_file():
                             opened.append(p)
                     except ValueError:
@@ -746,7 +762,7 @@ class Accounting:
                 window=None,
                 timestamp=row.get("timestamp", ""),
                 kind="context",
-                label="RECORDED CONTEXT · GROK ESTIMATE",
+                label="CONTEXT ESTIMATE",
             )
 
     def agy(self, row, path, line):
