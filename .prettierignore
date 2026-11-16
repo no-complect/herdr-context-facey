@@ -1,0 +1,9 @@
+node_modules/
+package-lock.json
+mods/*/*.d.ts
+mods/*/jsconfig.json
+mods/*/tsconfig.json
+LICENSE
+**/__pycache__/
+.ruff_cache/
+.venv/

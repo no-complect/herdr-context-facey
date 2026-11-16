@@ -1,0 +1,5 @@
+{
+  "global": {
+    "cmd-alt-x": "mod.open:herdr-context-facey"
+  }
+}

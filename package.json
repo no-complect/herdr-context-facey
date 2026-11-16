@@ -1,0 +1,16 @@
+{
+  "name": "herdr-context-facey",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A native Herdr context inspector for local Codex and Claude Code sessions",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "3.10.1"
+  }
+}

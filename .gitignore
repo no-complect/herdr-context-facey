@@ -1,0 +1,14 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+node_modules/
+.ruff_cache/
+.venv/
+*.error
+mods/*/*.d.ts
+mods/*/jsconfig.json
+mods/*/tsconfig.json
+*.jsonl
+*.sqlite*
+.env
+.env.*
