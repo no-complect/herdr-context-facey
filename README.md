@@ -54,13 +54,9 @@ Previews can contain private conversation text; review screenshots before sharin
 
 ## Screenshots
 
-**Codex panel**
-
-![Codex panel](docs/screenshots/codex-panel.png)
-
-**Claude Code panel**
-
-![Claude Code panel](docs/screenshots/claude-panel.png)
+|                                                  Codex panel                                                   |                                                   Claude Code panel                                                    |
+| :------------------------------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------------------------------------------: |
+| [<img src="docs/screenshots/codex-panel.png" alt="Codex panel" width="160">](docs/screenshots/codex-panel.png) | [<img src="docs/screenshots/claude-panel.png" alt="Claude Code panel" width="160">](docs/screenshots/claude-panel.png) |
 
 ## Contribute
 
