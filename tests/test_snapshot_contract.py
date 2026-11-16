@@ -1,14 +1,10 @@
-import importlib.util
 import json
 import tempfile
 import unittest
 from pathlib import Path
 
-spec = importlib.util.spec_from_file_location(
-    "inspector", Path(__file__).parents[1] / "mods/herdr-context-facey/inspect_session.py"
-)
-m = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(m)
+import reader_test_support  # noqa: F401
+from reader import service as m
 
 
 class SnapshotContractTests(unittest.TestCase):

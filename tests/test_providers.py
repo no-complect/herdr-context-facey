@@ -1,4 +1,3 @@
-import importlib.util
 import json
 import tempfile
 import unittest
@@ -6,14 +5,33 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-spec = importlib.util.spec_from_file_location(
-    "inspector", Path(__file__).parents[1] / "mods/herdr-context-facey/inspect_session.py"
-)
-m = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(m)
+import reader_test_support  # noqa: F401
+from reader import service as m
+from reader.providers import agy
 
 
 class ProviderTests(unittest.TestCase):
+    def test_provider_names_still_resolve_without_process_file_metadata(self):
+        from reader.providers import get_provider
+
+        for provider in ("codex", "claude", "grok", "agy"):
+            with self.subTest(provider=provider):
+                adapter = get_provider(provider)
+                candidate = dict(
+                    id="session-one", path=str(self.grok), name="Named conversation", cwd=""
+                )
+                with patch.object(adapter, "candidates", return_value=[candidate]):
+                    path, _, _, _ = m.resolve(
+                        dict(provider=provider, title="Named conversation | project"), self.home
+                    )
+                self.assertEqual(path, self.grok)
+                other = dict(candidate, id="session-two", path=str(self.agy))
+                with patch.object(adapter, "candidates", return_value=[candidate, other]):
+                    path, _, _, _ = m.resolve(
+                        dict(provider=provider, title="Named conversation"), self.home
+                    )
+                self.assertIsNone(path)
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.home = Path(self.tmp.name).resolve()
@@ -212,7 +230,7 @@ class ProviderTests(unittest.TestCase):
                     )
                 )
             )
-            candidates = m.extra_candidates("agy", self.home)
+            candidates = agy.candidates(self.home)
             candidate = next(c for c in candidates if c["path"] == str(path))
             self.assertEqual(candidate["name"], "Agy title")
             self.assertEqual(candidate["cwd"], "/project one")

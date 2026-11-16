@@ -29,9 +29,12 @@ const snapshot = (id = "one", extra = {}) => ({
 });
 function pendingReader() {
   const calls = [];
-  const controller = new SessionController((request) => new Promise((resolve, reject) => {
-    calls.push({ request, resolve, reject });
-  }));
+  const controller = new SessionController(
+    (request) =>
+      new Promise((resolve, reject) => {
+        calls.push({ request, resolve, reject });
+      }),
+  );
   return { controller, calls };
 }
 
@@ -126,7 +129,12 @@ test("appending records preserves a still-valid pinned preview and replay positi
   await preview;
   c.cutoff = 0;
   read = c.refresh(target());
-  calls[2].resolve(snapshot("one", { revision: "appended", events: [event(), event("second", { id: "1", line: 2 })] }));
+  calls[2].resolve(
+    snapshot("one", {
+      revision: "appended",
+      events: [event(), event("second", { id: "1", line: 2 })],
+    }),
+  );
   await read;
   assert.equal(c.pinned, "0");
   assert.equal(c.details, "original text");
@@ -140,7 +148,13 @@ test("an unchanged response retains the snapshot and includes its revision in th
   await read;
   read = c.refresh(target());
   assert.equal(calls[1].request.revision, "revision-one");
-  calls[1].resolve({ version: 1, status: "unchanged", session: c.data.session, revision: "revision-one", candidates: [] });
+  calls[1].resolve({
+    version: 1,
+    status: "unchanged",
+    session: c.data.session,
+    revision: "revision-one",
+    candidates: [],
+  });
   await read;
   assert.equal(c.data.events.length, 1);
 });
@@ -158,4 +172,49 @@ test("force refresh supersedes an in-flight read and closing invalidates late wo
   await old;
   assert.equal(c.data.revision, "forced");
   assert.equal(c.busy, false);
+});
+
+test("a late preview cannot reappear after its record is replaced", async () => {
+  const { controller: c, calls } = pendingReader();
+  let read = c.refresh(target());
+  calls[0].resolve(snapshot());
+  await read;
+  const preview = c.inspect(c.data.events[0]);
+  read = c.refresh(target());
+  calls[2].resolve(snapshot("one", { revision: "rewritten", events: [event("replacement")] }));
+  await read;
+  calls[1].resolve({ version: 1, status: "detail", text: "obsolete preview" });
+  await preview;
+  assert.equal(c.pinned, null);
+  assert.equal(c.details, null);
+});
+
+test("manual selection and a restarted process invalidate prior terminal reads", async () => {
+  const { controller: c, calls } = pendingReader();
+  const old = c.refresh(target("a", { pid: 1 }));
+  c.manual.a = "/manual/session.jsonl";
+  const current = c.refresh(target("a", { pid: 2 }));
+  assert.equal(calls[1].request.path, "/manual/session.jsonl");
+  calls[1].resolve(snapshot("manual"));
+  await current;
+  calls[0].resolve(snapshot("old"));
+  await old;
+  assert.equal(c.data.session.id, "manual");
+});
+
+test("an unchanged response for a different session is rejected", async () => {
+  const { controller: c, calls } = pendingReader();
+  let read = c.refresh(target());
+  calls[0].resolve(snapshot());
+  await read;
+  read = c.refresh(target());
+  calls[1].resolve({
+    version: 1,
+    status: "unchanged",
+    session: snapshot("other").session,
+    revision: "revision-one",
+  });
+  await read;
+  assert.match(c.error, /another session/);
+  assert.equal(c.data.session.id, "one");
 });
