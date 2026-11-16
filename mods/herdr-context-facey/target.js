@@ -1,4 +1,20 @@
-const supported = (entry) => /codex|claude/.test(entry?.program?.key ?? "");
+export const providerNames = {
+  codex: "Codex",
+  claude: "Claude Code",
+  grok: "Grok Build",
+  agy: "Antigravity CLI",
+};
+
+function providerFor(entry) {
+  const key = entry?.program?.key ?? "";
+  if (/^codex(?:-|$)/.test(key)) return "codex";
+  if (/^claude(?:-|$)/.test(key)) return "claude";
+  if (/^grok(?:-build)?$/.test(key)) return "grok";
+  if (/^(?:agy|antigravity(?:-cli)?)$/.test(key)) return "agy";
+  return null;
+}
+
+const supported = (entry) => providerFor(entry) !== null;
 
 function selectedAgent(candidates, selectedAddress) {
   const selected = candidates.find((pane) => pane.terminal === selectedAddress);
@@ -31,7 +47,7 @@ export function focusedSession(focus, allPanes, allTerminals, previous) {
   }
   if (!address) return previousInTab;
 
-  const program = supported(pane) ? pane.program.key : terminal?.program?.key;
+  const provider = providerFor(pane) ?? providerFor(terminal);
   return {
     address,
     space: focus.space,
@@ -40,6 +56,6 @@ export function focusedSession(focus, allPanes, allTerminals, previous) {
     title: terminal?.report?.title || pane?.title || terminal?.title || "",
     cwd: terminal?.foreground?.cwd || pane?.cwd || focus.cwd || terminal?.cwd,
     session_id: terminal?.labels?.["agent.session"],
-    provider: /claude/.test(program) ? "claude" : "codex",
+    provider,
   };
 }

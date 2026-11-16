@@ -10,10 +10,12 @@ import re
 import sqlite3
 import subprocess
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 MAX_BYTES = 96 * 1024 * 1024
 MAX_LINE = 16 * 1024 * 1024
 MAX_EVENTS = 5000
+PROVIDERS = ("codex", "claude", "grok", "agy")
 CATEGORIES = [
     "runtime",
     "instructions",
@@ -92,12 +94,143 @@ def estimate(text):
     return math.ceil(len(text.encode("utf-8")) / 4)
 
 
-def allowed(path, home):
+def valid_count(value):
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and value >= 0
+    )
+
+
+def result_category(name, arguments):
+    if re.search(r"(?i)(?:read|view_file|\bcat\b|\bsed\b)", name + " " + arguments):
+        return (
+            "skills"
+            if "SKILL.md" in arguments
+            else "memory"
+            if re.search(r"MEMORY\.md|/memories/", arguments)
+            else "files"
+        )
+    return "results"
+
+
+def provider_of(path, home):
     path = Path(path).expanduser().resolve()
-    roots = [home / ".codex/sessions", home / ".claude/projects"]
-    if path.suffix != ".jsonl" or not any(path.is_relative_to(r.resolve()) for r in roots):
-        raise ValueError("Select a local Codex or Claude session file.")
+    for provider, root in [("codex", ".codex/sessions"), ("claude", ".claude/projects")]:
+        if path.suffix == ".jsonl" and path.is_relative_to((home / root).resolve()):
+            return provider
+    root = (home / ".grok/sessions").resolve()
+    if path.is_relative_to(root):
+        parts = path.relative_to(root).parts
+        if len(parts) == 3 and parts[-1] in ("chat_history.jsonl", "updates.jsonl"):
+            return "grok"
+    for root in agy_roots(home):
+        root = (root / "brain").resolve()
+        if path.is_relative_to(root):
+            parts = path.relative_to(root).parts
+            if len(parts) == 4 and parts[1:] == (".system_generated", "logs", "transcript.jsonl"):
+                return "agy"
+    raise ValueError("Select a local Codex, Claude Code, Grok Build or Antigravity transcript.")
+
+
+def allowed(path, home, provider=None):
+    path = Path(path).expanduser().resolve()
+    actual = provider_of(path, home)
+    if provider is not None and actual != provider:
+        raise ValueError("The selected transcript belongs to another provider.")
     return path
+
+
+def agy_roots(home):
+    return [home / ".gemini/antigravity-cli", home / ".gemini/antigravity"]
+
+
+def metadata(path, root):
+    """Read only a bounded, known metadata file, never a link outside its session root."""
+    try:
+        path = path.resolve()
+        if not path.is_relative_to(root.resolve()):
+            return {}
+        with path.open("rb") as stream:
+            raw = stream.read(MAX_LINE + 1)
+        value = json.loads(raw) if len(raw) <= MAX_LINE else None
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def extra_candidates(provider, home):
+    candidates = []
+    if provider == "grok":
+        for source in home.glob(".grok/sessions/*/*/summary.json"):
+            data = metadata(source, home / ".grok/sessions")
+            info = data.get("info") or {}
+            if not isinstance(info, dict):
+                continue
+            candidates.append(
+                dict(
+                    id=info.get("id") or source.parent.name,
+                    path=str(source.with_name("chat_history.jsonl")),
+                    name=data.get("title") or data.get("generated_title") or source.parent.name,
+                    cwd=info.get("cwd", ""),
+                )
+            )
+    elif provider == "agy":
+        for root in agy_roots(home):
+            data = metadata(root / "cache/conversation_metadata.json", root)
+            indexed = data.get("conversations") or {}
+            if not isinstance(indexed, dict):
+                indexed = {}
+            for source in root.glob("brain/*/.system_generated/logs/transcript.jsonl"):
+                sid = source.parents[2].name
+                entry = indexed.get(sid) or {}
+                if not isinstance(entry, dict):
+                    continue
+                summary = entry.get("summary") or {}
+                if (
+                    not isinstance(summary, dict)
+                    or entry.get("is_internal")
+                    or summary.get("Internal")
+                ):
+                    continue
+                uris = summary.get("WorkspaceURIs") or []
+                cwd = unquote(urlparse(uris[0]).path) if uris and isinstance(uris[0], str) else ""
+                candidates.append(
+                    dict(id=sid, path=str(source), name=summary.get("Title") or sid, cwd=cwd)
+                )
+    result = []
+    for candidate in candidates:
+        try:
+            source = allowed(candidate["path"], home, provider)
+            if source.is_file():
+                result.append(
+                    dict(
+                        candidate,
+                        path=str(source),
+                        name=redact(str(candidate["name"]))[:100],
+                        updated=source.stat().st_mtime,
+                    )
+                )
+        except (OSError, ValueError):
+            continue
+    return sorted(result, key=lambda c: c["updated"], reverse=True)[:60]
+
+
+def canonical_session(path, home, provider):
+    path = allowed(path, home, provider)
+    if provider == "grok":
+        path = allowed(path.with_name("chat_history.jsonl"), home, provider)
+    return path
+
+
+def session_id(path, home):
+    provider = provider_of(path, home)
+    if provider == "grok":
+        return path.parent.name
+    if provider == "agy":
+        return path.parents[2].name
+    return path.stem.split("rollout-")[-1]
 
 
 def header(path):
@@ -206,8 +339,8 @@ def chain(path, home, seen=None, limit=None):
 
 def resolve(request, home):
     provider = request.get("provider", "codex")
-    if provider not in ("codex", "claude"):
-        return None, [], "This panel currently reads Codex and Claude Code sessions.", ""
+    if provider not in PROVIDERS:
+        return None, [], "Focus a Codex, Claude Code, Grok Build or Antigravity CLI session.", ""
     if provider == "claude":
         paths = sorted(
             home.glob(".claude/projects/*/*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True
@@ -216,10 +349,12 @@ def resolve(request, home):
             dict(id=p.stem, path=str(p), name=p.stem, cwd="", updated=int(p.stat().st_mtime))
             for p in paths
         ]
-    else:
+    elif provider == "codex":
         candidates = codex_index(home)
+    else:
+        candidates = extra_candidates(provider, home)
     if request.get("path"):
-        chosen = allowed(request["path"], home)
+        chosen = canonical_session(request["path"], home, provider)
         return chosen, candidates, None, "Selected session"
     sid = request.get("session_id")
     if sid:
@@ -237,7 +372,7 @@ def resolve(request, home):
             for line in proc.stdout.splitlines():
                 if line.startswith("n") and line.endswith(".jsonl"):
                     try:
-                        p = allowed(line[1:], home)
+                        p = canonical_session(line[1:], home, provider)
                         if p.is_file():
                             opened.append(p)
                     except ValueError:
@@ -297,6 +432,7 @@ class Accounting:
         self.malformed = 0
         self.media = 0
         self.opaque_compaction = False
+        self.truncated_records = False
         self.persistent = {}
 
     def add(
@@ -539,10 +675,168 @@ class Accounting:
                     field,
                 )
 
+    def grok(self, row, path, line):
+        typ, ts = row.get("type"), row.get("timestamp", "")
+        text = visible_text(row.get("content", ""))
+        reason = row.get("synthetic_reason")
+        if typ == "reasoning":
+            self.hidden_reasoning += 1
+        elif typ == "system":
+            self.add(
+                "runtime",
+                "Runtime instructions · recorded",
+                text,
+                path,
+                line,
+                ts,
+                "grok:content",
+                protected=True,
+            )
+        elif typ == "user":
+            if reason == "compaction_meta":
+                # This file is a retained snapshot, not an append-only pre-compaction log.
+                self.add(
+                    "summary", "Compacted history · recorded", text, path, line, ts, "grok:content"
+                )
+            elif reason and reason != "human":
+                self.add(
+                    "instructions",
+                    "Runtime injection · " + str(reason),
+                    text,
+                    path,
+                    line,
+                    ts,
+                    "grok:content",
+                    protected=True,
+                )
+            else:
+                self.turn += 1
+                self.add("user", "Your prompt", text, path, line, ts, "grok:content")
+        elif typ == "assistant":
+            self.model = row.get("model_id") or self.model
+            self.add("assistant", "Assistant reply", text, path, line, ts, "grok:content")
+            for index, call in enumerate(row.get("tool_calls") or []):
+                if not isinstance(call, dict):
+                    continue
+                name = call.get("name") or "Tool call"
+                args = visible_text(call.get("arguments", ""))
+                self.calls[call.get("id")] = (name, args)
+                self.add("calls", name, args, path, line, ts, "grok:call:" + str(index))
+        elif typ == "tool_result":
+            name, args = self.calls.get(row.get("tool_call_id"), ("Tool", ""))
+            self.add(
+                result_category(name, args),
+                name + " · result",
+                text,
+                path,
+                line,
+                ts,
+                "grok:content",
+            )
+
+    def grok_usage(self, row):
+        params = row.get("params") or {}
+        meta = params.get("_meta") or {}
+        value = meta.get("totalTokens")
+        if valid_count(value):
+            self.reported = dict(
+                input=value,
+                cached=0,
+                output=0,
+                window=None,
+                timestamp=row.get("timestamp", ""),
+                kind="context",
+                label="RECORDED CONTEXT · GROK ESTIMATE",
+            )
+
+    def agy(self, row, path, line):
+        typ, ts = row.get("type"), row.get("created_at", "")
+        if row.get("thinking"):
+            self.hidden_reasoning += 1
+        if row.get("truncated_fields"):
+            self.truncated_records = True
+        if typ == "USER_INPUT":
+            self.turn += 1
+            self.add(
+                "user",
+                "Your prompt",
+                visible_text(row.get("content", "")),
+                path,
+                line,
+                ts,
+                "agy:content",
+            )
+        elif typ == "PLANNER_RESPONSE":
+            self.add(
+                "assistant",
+                "Assistant reply",
+                visible_text(row.get("content", "")),
+                path,
+                line,
+                ts,
+                "agy:content",
+            )
+            for index, call in enumerate(row.get("tool_calls") or []):
+                if isinstance(call, dict):
+                    self.add(
+                        "calls",
+                        call.get("name") or "Tool call",
+                        visible_text(call.get("args", {})),
+                        path,
+                        line,
+                        ts,
+                        "agy:call:" + str(index),
+                    )
+            value = row.get("input_tokens")
+            if valid_count(value):
+                cached = row.get("cache_read_tokens", 0)
+                cached = cached if valid_count(cached) else 0
+                self.reported = dict(
+                    input=value + cached,
+                    cached=cached,
+                    output=row.get("output_tokens", 0),
+                    window=None,
+                    timestamp=ts,
+                )
+                self.samples.append(dict(self.reported, afterId=len(self.events) - 1))
+        elif typ == "GENERIC":
+            self.add(
+                "results",
+                "Recorded result",
+                visible_text(row.get("content") or row.get("error", "")),
+                path,
+                line,
+                ts,
+                "agy:content",
+            )
+
 
 def summarize(path, home):
-    parts, notes = chain(path, home) if "/.codex/" in str(path) else ([(path, None)], [])
+    path = allowed(path, home)
+    provider = provider_of(path, home)
+    parts, notes = chain(path, home) if provider == "codex" else ([(path, None)], [])
     accounting = Accounting()
+    if provider == "grok":
+        path = canonical_session(path, home, provider)
+        parts = [(path, None)]
+        updates = allowed(path.with_name("updates.jsonl"), home, provider)
+        if updates.is_file():
+            parts.append((updates, None))
+        data = metadata(path.with_name("summary.json"), home / ".grok/sessions")
+        accounting.model = data.get("current_model_id") or ""
+        notes.append(
+            "Grok shows its own context estimate and the retained chat history. Compaction or rewind can replace that history; pre-compaction history and earlier usage replay are unavailable."
+        )
+        notes.append(
+            "Grok tool definitions outside the chat history are not included in captured text."
+        )
+    elif provider == "agy":
+        notes.append(
+            "Antigravity input and cache-read counters are separate and are summed. Model/window capacity and startup instructions are not recorded in this transcript format."
+        )
+        notes.append(
+            "Antigravity result steps are grouped under Tool results. Compaction boundaries are not reconstructed from these transcripts."
+        )
     used = 0
     for source, boundary in parts:
         with source.open("rb") as stream:
@@ -577,12 +871,25 @@ def summarize(path, home):
                     break
                 try:
                     row = json.loads(raw)
-                    if "/.claude/" in str(source):
+                    if provider == "claude":
                         accounting.claude(row, source, line)
+                    elif provider == "grok":
+                        if source.name == "updates.jsonl":
+                            accounting.grok_usage(row)
+                        else:
+                            accounting.grok(row, source, line)
+                    elif provider == "agy":
+                        accounting.agy(row, source, line)
                     else:
                         accounting.feed(row, source, line)
                 except (ValueError, TypeError, AttributeError):
                     accounting.malformed += 1
+    if provider == "grok" and accounting.reported:
+        accounting.samples = [dict(accounting.reported, afterId=len(accounting.events) - 1)]
+    if accounting.truncated_records:
+        notes.append(
+            "The provider truncated some recorded fields; text estimates and previews are partial."
+        )
     if accounting.malformed:
         notes.append(
             str(accounting.malformed)
@@ -636,7 +943,17 @@ def summarize(path, home):
 
 
 def signature(path, home):
-    parts, _ = chain(path, home) if "/.codex/" in str(path) else ([(path, None)], [])
+    provider = provider_of(path, home)
+    parts, _ = chain(path, home) if provider == "codex" else ([(path, None)], [])
+    if provider == "grok":
+        path = canonical_session(path, home, provider)
+        parts = [(path, None)]
+        updates = allowed(path.with_name("updates.jsonl"), home, provider)
+        if updates.is_file():
+            parts.append((updates, None))
+        summary = path.with_name("summary.json").resolve()
+        if summary.is_relative_to((home / ".grok/sessions").resolve()) and summary.is_file():
+            parts.append((summary, None))
     values = [
         (
             str(p),
@@ -673,8 +990,28 @@ def detail(request, home):
             if number != target:
                 continue
             row = json.loads(raw)
+            provider = provider_of(path, home)
             p = row.get("payload", {})
             field = request.get("field", "")
+            if provider in ("grok", "agy"):
+                if provider == "grok" and (
+                    row.get("type") in ("system", "reasoning")
+                    or row.get("synthetic_reason") not in (None, "human", "compaction_meta")
+                ):
+                    return dict(
+                        text="Runtime instruction and private reasoning content is not displayed."
+                    )
+                if field == provider + ":content":
+                    text = visible_text(
+                        row.get("content") or (row.get("error", "") if provider == "agy" else "")
+                    )
+                elif field.startswith(provider + ":call:"):
+                    call = row.get("tool_calls", [])[int(field.split(":")[-1])]
+                    text = visible_text(call.get("arguments" if provider == "grok" else "args", ""))
+                else:
+                    return dict(text="This field is not available for preview.")
+                text = redact(text)
+                return dict(text=text[:24000], truncated=len(text) > 24000)
             if field.startswith("replacement:"):
                 p = p.get("replacement_history", [])[int(field.split(":")[1])]
             if (
@@ -717,7 +1054,7 @@ def main():
                 sig = signature(path, home)
                 result.update(
                     path=str(path),
-                    session_id=path.stem.split("rollout-")[-1],
+                    session_id=session_id(path, home),
                     match=matched,
                     signature=sig,
                 )

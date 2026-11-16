@@ -64,3 +64,24 @@ test("ambiguous agents require selection rather than guessing", () => {
   );
   assert.equal(target, null);
 });
+
+test("Grok Build and Antigravity programs retain their own provider identity", () => {
+  for (const [key, provider] of [
+    ["grok", "grok"],
+    ["grok-build", "grok"],
+    ["agy", "agy"],
+    ["antigravity", "agy"],
+    ["antigravity-cli", "agy"],
+  ]) {
+    const pane = { ...codex, program: { key } };
+    const target = focusedSession({ ...focus, pane: pane.pane }, [pane], []);
+    assert.equal(target.provider, provider, key);
+  }
+});
+
+test("unsupported Gemini CLI and unrelated names are not interpreted as Antigravity", () => {
+  for (const key of ["gemini", "shell", "not-codex", "grok-editor"]) {
+    const pane = { ...codex, program: { key } };
+    assert.equal(focusedSession({ ...focus, pane: pane.pane }, [pane], []), null, key);
+  }
+});
