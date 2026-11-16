@@ -1,15 +1,13 @@
-import importlib.util
 import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-spec = importlib.util.spec_from_file_location(
-    "inspector", Path(__file__).parents[1] / "mods/herdr-context-facey/inspect_session.py"
-)
-m = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(m)
+import reader_test_support  # noqa: F401
+from reader import accounting
+from reader import service as m
+from reader.providers import claude, codex
 
 
 class AccountingTests(unittest.TestCase):
@@ -138,9 +136,9 @@ class AccountingTests(unittest.TestCase):
 
     def test_redaction_and_source_boundary(self):
         secret = "sk-" + "a" * 40
-        self.assertNotIn(secret, m.redact("key " + secret))
-        self.assertNotIn("secret-value", m.redact('{"access_token":"secret-value"}'))
-        self.assertNotIn("secret-value", m.redact("TYPESAFE_API_KEY=secret-value"))
+        self.assertNotIn(secret, accounting.redact("key " + secret))
+        self.assertNotIn("secret-value", accounting.redact('{"access_token":"secret-value"}'))
+        self.assertNotIn("secret-value", accounting.redact("TYPESAFE_API_KEY=secret-value"))
         outside = self.home / "credentials.jsonl"
         outside.write_text("private")
         with self.assertRaises(ValueError):
@@ -185,15 +183,15 @@ class AccountingTests(unittest.TestCase):
                 ]
             )
         )
-        self.assertLess(len(m.visible_text(output)), 100)
-        self.assertIn("visible text", m.visible_text(output))
+        self.assertLess(len(accounting.visible_text(output)), 100)
+        self.assertIn("visible text", accounting.visible_text(output))
 
     def test_folder_and_recency_do_not_silently_choose_a_session(self):
         candidates = [
             dict(id="first000", path="/unused/first.jsonl", name="first", cwd="/repo"),
             dict(id="second00", path="/unused/second.jsonl", name="second", cwd="/repo"),
         ]
-        with patch.object(m, "codex_index", return_value=candidates):
+        with patch.object(codex, "candidates", return_value=candidates):
             path, choices, reason, _ = m.resolve(dict(cwd="/repo"), self.home)
         self.assertIsNone(path)
         self.assertEqual(len(choices), 2)
@@ -208,18 +206,19 @@ class AccountingTests(unittest.TestCase):
             dict(id="parent00", path=str(parent), name="Named session"),
             dict(id="child000", path=str(child), name="Named session"),
         ]
-        with patch.object(m, "codex_index", return_value=candidates):
+        with patch.object(codex, "candidates", return_value=candidates):
             path, _, _, _ = m.resolve(dict(title="Named session | repository"), self.home)
         self.assertEqual(path, child)
         independent = self.write("other000", [self.record("session_meta", id="other000")])
         candidates.append(dict(id="other000", path=str(independent), name="Named session"))
-        with patch.object(m, "codex_index", return_value=candidates):
+        with patch.object(codex, "candidates", return_value=candidates):
             path, _, _, _ = m.resolve(dict(title="Named session"), self.home)
         self.assertIsNone(path)
 
     def test_claude_usage_and_private_thinking(self):
-        a = m.Accounting()
-        a.claude(
+        a = accounting.Accounting()
+        claude.consume(
+            a,
             dict(
                 type="assistant",
                 message=dict(

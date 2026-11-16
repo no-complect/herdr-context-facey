@@ -78,6 +78,8 @@ herdr-app check mods/herdr-context-facey
 
 JavaScript, JSON, and Markdown use Prettier; Python uses Ruff. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for formatting commands and live checks.
+[Architecture and reader protocol](docs/ARCHITECTURE.md) explains the controller,
+provider adapters, and regression-test boundaries.
 [RECIPE.md](RECIPE.md) describes how the mod works and how to rebuild it.
 
 ## License
