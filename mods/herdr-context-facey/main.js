@@ -25,6 +25,9 @@ import { layoutVisibility } from "./visibility.js";
 import { focusedSession } from "./target.js";
 
 const MOD = "herdr-context-facey";
+// Copies share this module, so keyboard-opened dialogs can inherit the panel's
+// selected session without persisting an attachment or any conversation text.
+let panelInstance = null;
 
 async function readSession(request, timeout = 15000) {
   const result = await exec(
@@ -42,6 +45,9 @@ async function readSession(request, timeout = 15000) {
 
 export default class ContextInspector extends View {
   init(_props, cx) {
+    const options = props() ?? {};
+    const attachment = options.overlay ? panelInstance?.attachment() : null;
+    this.expandedTarget = options.target ?? attachment?.target;
     this.width = props()?.overlay ? 1100 : 450;
     this.data = null;
     this.busy = false;
@@ -54,6 +60,15 @@ export default class ContextInspector extends View {
     this.details = null;
     this.detailKey = null;
     this.manual = {};
+    const selectedPath =
+      options.selectedPath ??
+      (this.expandedTarget?.address === attachment?.target?.address
+        ? attachment?.selectedPath
+        : null);
+    if (selectedPath && this.expandedTarget?.address) {
+      this.manual[this.expandedTarget.address] = selectedPath;
+    }
+    if (!options.overlay) panelInstance = this;
     this.picker = false;
     this.about = false;
     this.closed = false;
@@ -70,12 +85,19 @@ export default class ContextInspector extends View {
   close() {
     this.closed = true;
     this.code?.release();
+    if (panelInstance === this) panelInstance = null;
   }
 
   target() {
     if (props()?.target) return props().target;
+    if (this.expandedTarget) return this.expandedTarget;
     this.lastTarget = focusedSession(focused(), panes(), terminals(), this.lastTarget);
     return this.lastTarget;
+  }
+
+  attachment() {
+    const target = this.target();
+    return { target, selectedPath: this.manual[target?.address] };
   }
 
   targetIdentity(target) {
@@ -205,7 +227,7 @@ export default class ContextInspector extends View {
       kind: "dialog",
       width: 1120,
       height: 760,
-      props: { target: this.target(), selectedPath: this.manual[this.target()?.address] },
+      props: this.attachment(),
     });
   }
 
@@ -659,11 +681,6 @@ export default class ContextInspector extends View {
       target = this.target();
     const next = this.targetIdentity(target);
     if (next !== this.identity && this.visible()) this.refresh(cx);
-    if (props()?.selectedPath && !this.seeded) {
-      this.seeded = true;
-      if (target) this.manual[target.address] = props().selectedPath;
-      this.refresh(cx, true);
-    }
     const events = selectEvents(this.data, this.cutoff, this.history),
       usage = reportedUsageAt(this.data, this.cutoff);
     const wide = this.width > 720;

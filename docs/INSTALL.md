@@ -26,8 +26,9 @@ herdr-app do mod.open --name herdr-context-facey
 ```
 
 Running `mod.open` again closes the dialog; Escape or Close also dismisses it.
-The root `keys.json` is an optional snippet mapping macOS **Alt + Command + X**
-to that action. Merge the binding into a suitable section of your keys file;
+The root `keys.json` is an optional snippet mapping macOS **Ctrl + Command + X**
+and **Alt + Command + X** to that action. The dialog inherits the current panel's
+session selection when a panel is present. Merge the bindings into a suitable section of your keys file;
 do not replace the file. More specific terminal, mod, and layout bindings can
 override `global`. Choose an appropriate shortcut on other platforms.
 

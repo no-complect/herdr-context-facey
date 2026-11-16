@@ -32,8 +32,9 @@ five seconds. Use **Session** if automatic matching needs a hand.
 | Since compact / Whole history | Compare the latest segment with earlier records |
 | Expand                        | Open a larger view                              |
 
-The optional **Alt + Command + X** binding opens and closes a dialog. An embedded
-panel uses its layout's controls. Merge the supplied `keys.json` snippet only
+**Ctrl + Command + X** toggles the expanded dialog for the current Context
+session. **Alt + Command + X** is an optional alias; an embedded panel uses its
+layout's controls. Merge the supplied `keys.json` snippet only
 where the shortcut is available. [Manual installation and layout setup](docs/INSTALL.md).
 
 ## Understand the numbers

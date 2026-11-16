@@ -54,14 +54,16 @@ return to automatic following.
 
 Click a category to filter it, click again or Show all categories to clear.
 Search labels and teasers; Largest sorts by estimated tokens. Clicking a row
-pins its preview. The list has one `on_item_click` handler; do not register event
-handlers inside the virtual row renderer. Hover changes color only.
+pins its preview. Hover changes color only.
 
 Replay filters evidence to the selected event and uses the latest usage sample
 available by then. Since compact keeps the newest recorded segment plus latest
 persistent snapshots; Whole history shows all retained events. Back to live
 resumes the latest view. Refresh re-reads immediately. Expand pins the current
-target into a larger dialog. Close, Escape or `mod.open` again dismisses it.
+target into a larger dialog. Close, Escape or its toggle shortcut dismisses it.
+Ctrl + Command + X opens and closes this dialog, inheriting the current panel's
+selected session. Alt + Command + X is an optional dialog shortcut too; a host
+layout can instead assign it to opening and closing the embedded side panel.
 
 ## Built from
 
@@ -78,6 +80,12 @@ One mod at `mods/herdr-context-facey/`:
 - `inspect_session.py`: standard-library-only read-only Python 3.9+ adapter.
 - `context.svg`: a small layers outline icon.
 - `mod.json`: `place: none`, title Context, overlay size 1120 by 760.
+
+The virtual list uses one `on_item_click` handler outside its row renderer.
+Expanded copies accept `props.target` and `props.selectedPath`. A dialog opened
+through the app's native toggle inherits these from the live panel, when present,
+through a module-local reference cleared when that panel closes. Store no
+attachment in shared or persistent state.
 
 Use Herdr's `appHome`, `exec`, `focused`, `panes`, `terminals`, `layout`, `props`,
 `theme`, `settings`, `openOverlay` and `closeOverlay`. A current callback receives
@@ -97,7 +105,7 @@ Claude reads user/assistant text, tool-use/results, usage and compact boundaries
 Count Codex cached input once; sum Claude's separate input/cache buckets. UTF-8
 bytes / 4 is an explicitly approximate text estimate independent of those totals.
 
-The optional root `keys.json` binds `cmd-alt-x` to
+The optional root `keys.json` binds `cmd-ctrl-x` and `cmd-alt-x` to
 `mod.open:herdr-context-facey`. Merge it only where available. An embedded block
 can use any ID; its host layout supplies its own tab-bar button and open/close
 action. Include no `layouts/` directory or whole user configuration. Copy no
