@@ -6,11 +6,13 @@ export const providerNames = {
 };
 
 function providerFor(entry) {
-  const key = entry?.program?.key ?? "";
-  if (/^codex(?:-|$)/.test(key)) return "codex";
-  if (/^claude(?:-|$)/.test(key)) return "claude";
-  if (/^grok(?:-build)?$/.test(key)) return "grok";
-  if (/^(?:agy|antigravity(?:-cli)?)$/.test(key)) return "agy";
+  for (const key of [entry?.app, entry?.report?.app, entry?.program?.key]) {
+    if (typeof key !== "string") continue;
+    if (/^codex(?:-|$)/.test(key)) return "codex";
+    if (/^claude(?:-|$)/.test(key)) return "claude";
+    if (/^grok(?:-build)?$/.test(key)) return "grok";
+    if (/^(?:agy|antigravity(?:-cli)?)$/.test(key)) return "agy";
+  }
   return null;
 }
 
@@ -36,7 +38,7 @@ export function focusedSession(focus, allPanes, allTerminals, previous) {
   let address = focus.shown || focus.terminal || pane?.terminal;
   let terminal = allTerminals.find((candidate) => candidate.address === address);
 
-  if (!supported(pane) && !supported(terminal)) {
+  if (!(pane?.terminal === address && supported(pane)) && !supported(terminal)) {
     const candidates = allPanes.filter(
       (candidate) => candidate.tab === focus.tab && supported(candidate),
     );
@@ -47,7 +49,7 @@ export function focusedSession(focus, allPanes, allTerminals, previous) {
   }
   if (!address) return previousInTab;
 
-  const provider = providerFor(pane) ?? providerFor(terminal);
+  const provider = providerFor(terminal) ?? (pane?.terminal === address ? providerFor(pane) : null);
   return {
     address,
     space: focus.space,

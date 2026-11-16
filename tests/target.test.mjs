@@ -85,3 +85,28 @@ test("unsupported Gemini CLI and unrelated names are not interpreted as Antigrav
     assert.equal(focusedSession({ ...focus, pane: pane.pane }, [pane], []), null, key);
   }
 });
+
+test("live agent reports identify providers with generic program-table entries", () => {
+  const pane = { ...codex, program: { key: "agent" }, app: "antigravity" };
+  assert.equal(focusedSession({ ...focus, pane: pane.pane }, [pane], []).provider, "agy");
+  const terminal = { address: "grok-terminal", program: { key: "agent" }, report: { app: "grok" } };
+  assert.equal(
+    focusedSession({ ...focus, shown: terminal.address }, [], [terminal]).provider,
+    "grok",
+  );
+});
+
+test("a shown replacement terminal takes precedence over the original pane program", () => {
+  const terminal = {
+    address: "agy-terminal",
+    program: { key: "agent" },
+    report: { app: "antigravity" },
+  };
+  const target = focusedSession(
+    { ...focus, pane: codex.pane, shown: terminal.address },
+    [codex],
+    [terminal],
+  );
+  assert.equal(target.address, terminal.address);
+  assert.equal(target.provider, "agy");
+});
