@@ -1,11 +1,9 @@
 # Herdr Context Facey
 
 See what is filling your AI session's context, right inside [Herdr](https://herdr.dev/).
-A native inspector for **Codex**, **Claude Code**, **Grok Build**, and
-**Antigravity CLI (`agy`)**, with a timeline, category
-filters, pinned previews, and historical replay.
-
-![Expanded Context inspector](preview.png)
+A native context-mapping inspector for **Codex**, **Claude Code**, **Grok Build**,
+and **Antigravity CLI (`agy`, also called Gemini AGY)**, with a timeline, category
+filters, pinned previews, and historical replay where recorded history supports it.
 
 ## Install
 
