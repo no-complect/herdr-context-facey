@@ -52,7 +52,15 @@ The mod reads local history without changing it or making network requests.
 Previews can contain private conversation text; review screenshots before sharing.
 [Accounting, compatibility, and privacy details](docs/ACCOUNTING.md).
 
-[Codex panel](docs/screenshots/codex-panel.png) · [Claude Code panel](docs/screenshots/claude-panel.png)
+## Screenshots
+
+**Codex panel**
+
+![Codex panel](docs/screenshots/codex-panel.png)
+
+**Claude Code panel**
+
+![Claude Code panel](docs/screenshots/claude-panel.png)
 
 ## Contribute
 
