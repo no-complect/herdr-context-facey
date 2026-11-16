@@ -18,6 +18,12 @@ Copy `mods/herdr-context-facey/` into your Herdr app home's `mods/` directory,
 usually `~/.config/herdr-app/mods/`. Review an existing destination before
 updating it. Herdr supplies its own generated editor type files.
 
+When replacing an older inspector copy such as `tuuxic-context`, also update the
+existing Context block's `content.mod` to `herdr-context-facey` and point its
+dialog shortcut to `mod.open:herdr-context-facey`. Installing the new folder alone
+does not change which mod an existing layout displays. Preserve your panel's
+layout ID and its show/hide controls.
+
 Check and open the installed mod:
 
 ```sh

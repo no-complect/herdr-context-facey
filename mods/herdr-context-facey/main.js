@@ -22,7 +22,7 @@ import {
   reportedUsageAt,
 } from "./model.js";
 import { layoutVisibility } from "./visibility.js";
-import { focusedSession } from "./target.js";
+import { focusedSession, providerNames } from "./target.js";
 
 const MOD = "herdr-context-facey";
 // Copies share this module, so keyboard-opened dialogs can inherit the panel's
@@ -153,8 +153,9 @@ export default class ContextInspector extends View {
       this.error = "Context currently reads local sessions only.";
       return;
     }
-    if (!["codex", "claude"].includes(target.provider)) {
-      this.error = "Focus a Codex or Claude Code session to inspect it.";
+    if (!Object.keys(providerNames).includes(target.provider)) {
+      this.error =
+        "Focus a Codex, Claude Code, Grok Build or Antigravity CLI session to inspect it.";
       return;
     }
     const request = {
@@ -270,7 +271,10 @@ export default class ContextInspector extends View {
             div()
               .text_color(t.muted)
               .text_size(11)
-              .child(this.cutoff === null ? "LAST REPORTED INPUT" : "REPORTED BY THIS POINT"),
+              .child(
+                usage?.label ??
+                  (this.cutoff === null ? "LAST REPORTED INPUT" : "REPORTED BY THIS POINT"),
+              ),
           )
           .child(
             div()
@@ -326,7 +330,9 @@ export default class ContextInspector extends View {
           .text_color(t.dim)
           .child(
             usage
-              ? "Reported by the last model request; an in-flight turn may be ahead."
+              ? usage.kind === "context"
+                ? "Grok's recorded context estimate; an in-flight turn may be ahead."
+                : "Reported by the last model request; an in-flight turn may be ahead."
               : "No model usage sample is recorded yet.",
           ),
       );
@@ -753,7 +759,7 @@ export default class ContextInspector extends View {
             .text_size(10)
             .text_color(t.dim)
             .child(
-              `Following ${target.provider === "claude" ? "Claude Code" : "Codex"} · ${target.address}`,
+              `Following ${providerNames[target.provider] ?? target.provider} · ${target.address}`,
             ),
         ),
       )
@@ -770,7 +776,7 @@ export default class ContextInspector extends View {
             .child(
               this.busy
                 ? "Reading the local session…"
-                : "Select a Codex or Claude Code terminal to inspect its recorded context contributions.",
+                : "Select a Codex, Claude Code, Grok Build or Antigravity CLI terminal to inspect its recorded context contributions.",
             ),
         ),
       )

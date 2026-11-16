@@ -96,7 +96,13 @@ and argument array, not shell interpolation. `cx.spawn` awaits it; the timer use
 Match sessions by explicit identity, foreground open file, Claude's optional
 process mapping, or an unambiguous Codex name/recorded continuation. Otherwise
 show the picker. Resolve all transcript paths inside the two approved default
-session roots and accept only `.jsonl`. Open Codex's SQLite index read-only.
+session roots and accept only the supported transcript paths. Open Codex's SQLite index read-only.
+Grok Build uses retained `chat_history.jsonl` plus the latest saved update counter;
+Antigravity CLI uses generated `.system_generated/logs/transcript.jsonl` files in
+either default app-data directory. Read only known discovery metadata, never
+provider settings or authentication files. A folder alone is not a match.
+Label Grok's estimated context counter separately from reported request input.
+Do not infer missing Antigravity model/window values or compaction boundaries.
 
 Parse actual Codex response items, persistent snapshots and usage events. Ignore
 mirrored event records and opaque reasoning. Follow recorded lineage only to
