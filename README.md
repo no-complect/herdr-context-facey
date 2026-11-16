@@ -1,10 +1,9 @@
 # Herdr Context Facey
 
 See what is filling your AI session's context, right inside [Herdr](https://herdr.dev/).
-A native inspector for **Codex** and **Claude Code**, with a timeline, category
-filters, pinned previews, and historical replay.
-
-![Expanded Context inspector](preview.png)
+A native context-mapping inspector for **Codex**, **Claude Code**, **Grok Build**,
+and **Antigravity CLI (`agy`, also called Gemini AGY)**, with a timeline, category
+filters, pinned previews, and historical replay where recorded history supports it.
 
 ## Install
 
@@ -20,7 +19,7 @@ No API keys, hooks, or extra services are needed.
 
 ## Use it
 
-Focus a Codex or Claude Code terminal, then open **Context**. It refreshes every
+Focus a supported agent terminal, then open **Context**. It refreshes every
 five seconds. Use **Session** if automatic matching needs a hand.
 
 | Control                       | What it does                                    |
@@ -40,11 +39,15 @@ where the shortcut is available. [Manual installation and layout setup](docs/INS
 ## Understand the numbers
 
 **Last reported input** comes from the provider's latest recorded request.
+Grok Build instead shows **Context estimate**, its own saved context counter.
 **Captured text** is an estimate using UTF-8 bytes divided by four. The two
 numbers measure different things and can differ substantially.
 
-Claude currently groups file reads under Tool results and does not separately
-account for startup instructions, memory, or skills. Hidden reasoning and opaque
+Claude and AGY group file reads under Tool results and do not separately
+account for startup instructions, memory, or skills. AGY requires a generated
+`transcript.jsonl`; older database-only conversations are unsupported. Grok reads
+retained chat history, which compaction or rewind can replace; earlier usage
+replay and tool definitions outside that history are unavailable. Hidden reasoning and opaque
 summaries are excluded from text estimates. Default local session storage only;
 remote sessions and custom storage directories are unsupported.
 
