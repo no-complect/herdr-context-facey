@@ -148,6 +148,40 @@ test("preview editors are reused and released on replacement, unpin and close", 
   assert.equal(inspector.session.closed, true);
 });
 
+test("retrying a failed preview releases its error editor and displays the recovered text", async () => {
+  const { Inspector, host, context, flush } = await nativeView();
+  const target = { address: "synthetic", provider: "codex", title: "Synthetic" };
+  host.props = { target };
+  let attempts = 0;
+  host.execute = async (_command, args) => {
+    const request = JSON.parse(args[2]);
+    const response =
+      request.action !== "detail"
+        ? snapshot()
+        : ++attempts === 1
+          ? {
+              version: 1,
+              status: "error",
+              error: { code: "source_unavailable", message: "Temporary preview failure" },
+            }
+          : { version: 1, status: "detail", text: "Recovered preview" };
+    return { code: 0, stdout: JSON.stringify(response) };
+  };
+  const inspector = new Inspector();
+  inspector.init({}, context());
+  await flush();
+  inspector.inspect(inspector.session.data.events[0], context());
+  await flush();
+  const failedEditor = inspector.code;
+  assert.equal(failedEditor.options.value, "Temporary preview failure");
+  inspector.inspect(inspector.session.data.events[0], context());
+  assert.equal(failedEditor.releases, 1);
+  await flush();
+  assert.equal(attempts, 2);
+  assert.equal(inspector.code.options.value, "Recovered preview");
+  inspector.close();
+});
+
 test("hidden panels skip automatic reads while explicit refresh overrides visibility", async () => {
   const { view, host, context, flush } = await nativeView();
   host.props = { blockId: "context" };

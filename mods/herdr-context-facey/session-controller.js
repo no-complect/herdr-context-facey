@@ -31,6 +31,7 @@ export class SessionController {
     this.pinned = null;
     this.details = null;
     this.detailKey = null;
+    this.detailFailed = false;
     this.requestId = 0;
     this.detailRequestId = 0;
     this.closed = false;
@@ -53,6 +54,7 @@ export class SessionController {
     this.pinned = null;
     this.details = null;
     this.detailKey = null;
+    this.detailFailed = false;
   }
 
   close() {
@@ -136,9 +138,11 @@ export class SessionController {
     const key = eventKey(this.data, event);
     if (!current || key !== eventKey(this.data, current)) return;
     this.pinned = event.id;
-    if (key === this.detailKey) return;
+    // Deduplicate pending/successful reads; a failed preview may be selected again.
+    if (key === this.detailKey && !this.detailFailed) return;
     const requestId = ++this.detailRequestId;
     this.detailKey = key;
+    this.detailFailed = false;
     this.details = null;
     try {
       const detail = await this.readSession(
@@ -159,6 +163,7 @@ export class SessionController {
       if (detail.truncated) this.details += "\n\n[Preview limited to 24,000 characters]";
     } catch (error) {
       if (!this.closed && requestId === this.detailRequestId) {
+        this.detailFailed = true;
         this.details = String(error.message || "The source could not be previewed.");
       }
     }
