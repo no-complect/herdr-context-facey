@@ -8,9 +8,7 @@ large contributions; clicking an event pins its source preview. Provider-recorde
 usage or context estimates appear separately, with historical replay where the
 saved records support it.
 
-|                                                         Codex                                                          |                                                          Claude Code                                                           |                                                       AGY (Antigravity CLI)                                                        |                                                        Grok Build                                                         |
-| :--------------------------------------------------------------------------------------------------------------------: | :----------------------------------------------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------------------------------------------------: |
-| [<img src="docs/screenshots/codex-panel.png" alt="Codex context panel" width="160">](docs/screenshots/codex-panel.png) | [<img src="docs/screenshots/claude-panel.png" alt="Claude Code context panel" width="160">](docs/screenshots/claude-panel.png) | [<img src="docs/screenshots/agy-panel.png" alt="AGY (Antigravity CLI) context panel" width="160">](docs/screenshots/agy-panel.png) | [<img src="docs/screenshots/grok-panel.png" alt="Grok Build context panel" width="160">](docs/screenshots/grok-panel.png) |
+![Context sidebars for Codex, Claude Code, AGY (Antigravity CLI), and Grok Build](preview.png)
 
 ## What you see
 
@@ -97,6 +95,18 @@ One mod at `mods/herdr-context-facey/`:
   Claude Code, Grok Build and AGY adapters own discovery, parsing and previews.
 - `context.svg`: a small layers outline icon.
 - `mod.json`: `place: none`, title Context, overlay size 1120 by 760.
+- `preview.png`: the four existing sidebar screenshots in one compact row, in
+  Codex, Claude Code, AGY, Grok Build order. Render `docs/preview.html` at
+  1208 by 720 pixels to regenerate this listing preview; keep the original
+  full-size screenshots in `docs/screenshots/`.
+
+When updating an existing installation, follow `docs/INSTALL.md` and sync the
+complete `mods/herdr-context-facey/` bundle, including every JavaScript module
+and the Python `reader/` package, from the same revision. Preserve the person's
+layout, key bindings and configuration, then run Herdr's native mod check and
+verify session following in the app. Updating only `main.js` can leave incompatible
+or missing modules. The recipe and preview belong to the published repository,
+outside the installed mod folder.
 
 The virtual list uses one `on_item_click` handler outside its row renderer.
 Expanded copies accept `props.target` and `props.selectedPath`. A dialog opened
