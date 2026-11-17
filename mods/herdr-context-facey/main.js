@@ -20,6 +20,8 @@ import {
   selectEvents,
   estimatedTotals,
   reportedUsageAt,
+  selectVisibleEvents,
+  usagePresentation,
 } from "./model.js";
 import { layoutVisibility } from "./visibility.js";
 import { focusedSession, providerNames } from "./target.js";
@@ -176,11 +178,11 @@ export default class ContextInspector extends View {
 
   gauge(usage) {
     const t = theme();
-    const percent = usage?.window ? (usage.input / usage.window) * 100 : null;
+    const presentation = usagePresentation(usage, this.session.cutoff);
     const color =
-      percent !== null && percent >= 90
+      presentation.severity === "critical"
         ? t.blocked
-        : percent !== null && percent >= 75
+        : presentation.severity === "warning"
           ? "#d4a75c"
           : "#82ac65";
     return v_flex()
@@ -190,21 +192,9 @@ export default class ContextInspector extends View {
           .justify_between()
           .items_end()
           .gap(8)
+          .child(div().text_color(t.muted).text_size(11).child(presentation.label))
           .child(
-            div()
-              .text_color(t.muted)
-              .text_size(11)
-              .child(
-                usage?.label ??
-                  (this.session.cutoff === null ? "LAST REPORTED INPUT" : "REPORTED BY THIS POINT"),
-              ),
-          )
-          .child(
-            div()
-              .text_size(22)
-              .font_semibold()
-              .text_color(color)
-              .child(usage ? formatCount(usage.input) : "—"),
+            div().text_size(22).font_semibold().text_color(color).child(presentation.inputText),
           ),
       )
       .child(
@@ -221,15 +211,7 @@ export default class ContextInspector extends View {
               .tooltip(this.session.data?.model || "")
               .child(this.session.data?.model || "Model not recorded"),
           )
-          .child(
-            div()
-              .flex_none()
-              .child(
-                usage?.window
-                  ? `${formatCount(usage.window)} window · ${percent.toFixed(1)}%`
-                  : "Window size not recorded",
-              ),
-          ),
+          .child(div().flex_none().child(presentation.windowText)),
       )
       .child(
         div()
@@ -237,28 +219,11 @@ export default class ContextInspector extends View {
           .w_full()
           .rounded(2)
           .bg(t.border)
-          .when(percent !== null, (el) =>
-            el.child(
-              div()
-                .h_full()
-                .rounded(2)
-                .w(`${Math.min(100, Math.max(0, percent))}%`)
-                .bg(color),
-            ),
+          .when(presentation.percentage !== null, (el) =>
+            el.child(div().h_full().rounded(2).w(presentation.fill).bg(color)),
           ),
       )
-      .child(
-        div()
-          .text_size(10)
-          .text_color(t.dim)
-          .child(
-            usage
-              ? usage.kind === "context"
-                ? "Grok's recorded context estimate; an in-flight turn may be ahead."
-                : "Reported by the last model request; an in-flight turn may be ahead."
-              : "No model usage sample is recorded yet.",
-          ),
-      );
+      .child(div().text_size(10).text_color(t.dim).child(presentation.note));
   }
 
   breakdown(events, cx) {
@@ -410,18 +375,11 @@ export default class ContextInspector extends View {
 
   rows(events, cx) {
     const t = theme();
-    const shown = events
-      .filter(
-        (e) =>
-          (!this.filter || e.category === this.filter) &&
-          (!this.query ||
-            `${e.label} ${e.teaser} ${categoryOf(e.category).label}`
-              .toLowerCase()
-              .includes(this.query)),
-      )
-      .sort((a, b) =>
-        this.sort === "largest" ? b.tokens - a.tokens : Number(b.id) - Number(a.id),
-      );
+    const shown = selectVisibleEvents(events, {
+      category: this.filter,
+      query: this.query,
+      sort: this.sort,
+    });
     return v_flex()
       .flex_1()
       .min_w(0)
