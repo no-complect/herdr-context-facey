@@ -1,86 +1,51 @@
 # Herdr Context Facey
 
-See what is filling your AI session's context, right inside [Herdr](https://herdr.dev/).
-A native context-mapping inspector for **Codex**, **Claude Code**, **Grok Build**,
-and **Antigravity CLI (`agy`, also called Gemini AGY)**, with a timeline, category
-filters, pinned previews, and historical replay where recorded history supports it.
+A context inspector inside [Herdr](https://herdr.dev/) for **Codex**,
+**Claude Code**, **Grok Build**, and **Antigravity CLI** (`agy`, also called Gemini AGY).
+Follow an agent's session, see recorded usage, and inspect the messages and tool
+results contributing to its captured context.
+
+[<img src="preview.png" alt="Context sidebars for Codex, Claude Code, AGY, and Grok Build" width="680">](preview.png)
 
 ## Install
 
-**Run this in your agent:**
+Run this in your agent:
 
 ```text
 Read ~/.config/herdr-app/AGENTS.md, then add this mod: https://github.com/no-complect/herdr-context-facey
 ```
 
-Requires the Herdr desktop app and **Python 3.9+** available as `python3`.
-Tested on macOS. Adds a mod to your existing layout; Tuuxic is optional.
-No API keys, hooks, or extra services are needed.
+Requires Herdr and **Python 3.9+** available as `python3`. Tested on macOS.
+Works with your existing layout. No API keys, hooks, or extra services are needed.
+See [manual setup and shortcuts](docs/INSTALL.md).
 
-## Use it
+## Use
 
 Focus a supported agent terminal, then open **Context**. It refreshes every
-five seconds. Use **Session** if automatic matching needs a hand.
+five seconds while visible. Use **Session** to select a session manually.
 
-| Control                       | What it does                                    |
-| ----------------------------- | ----------------------------------------------- |
-| Category labels               | Filter the recorded contributions               |
-| Timeline / Largest            | Browse recent activity or the biggest entries   |
-| Click an event                | Pin its text preview and source location        |
-| Replay through this event     | Inspect captured history up to that point       |
-| Since compact / Whole history | Compare the latest segment with earlier records |
-| Expand                        | Open a larger view                              |
+Filter by category, switch between **Timeline** and **Largest**, and click an
+entry to pin its text preview. **Expand** opens a larger view. Historical replay
+and compaction views depend on what the provider records.
 
-**Ctrl + Command + X** toggles the expanded dialog for the current Context
-session. **Alt + Command + X** is an optional alias; an embedded panel uses its
-layout's controls. Merge the supplied `keys.json` snippet only
-where the shortcut is available. [Manual installation and layout setup](docs/INSTALL.md).
+## What the numbers mean
 
-## Understand the numbers
+- **Last reported input** is the latest recorded input-token count and may lag a
+  running turn. Grok shows its recorded **Context estimate** instead.
+- **Captured text** estimates the size of retained text using UTF-8 bytes divided
+  by four. It is not an exact count of the agent's active prompt.
 
-**Last reported input** comes from the provider's latest recorded request.
-Grok instead shows **Context estimate**, its own saved context
-counter, which can include estimates.
-**Captured text** is an estimate using UTF-8 bytes divided by four. The two
-numbers measure different things and can differ substantially.
+The mod reads default local session history without changing it or making network
+requests. Coverage varies by provider; AGY requires a generated `transcript.jsonl`.
+Previews can contain private text, so review screenshots before sharing.
+See [accounting, supported formats, and limitations](docs/ACCOUNTING.md).
 
-Claude and Antigravity group file reads under Tool results and do not separately
-account for startup instructions, memory, or skills. Antigravity requires a
-generated `transcript.jsonl`; older database-only conversations are unsupported.
-Grok reads the retained chat history, which can be replaced by compaction or rewind;
-earlier usage replay and tool definitions outside that history are unavailable.
-Hidden reasoning and opaque
-summaries are excluded from text estimates. Default local session storage only;
-remote sessions and custom storage directories are unsupported.
+## Development
 
-The mod reads local history without changing it or making network requests.
-Previews can contain private conversation text; review screenshots before sharing.
-[Accounting, compatibility, and privacy details](docs/ACCOUNTING.md).
-
-## Screenshots
-
-|                                                  Codex panel                                                   |                                                   Claude Code panel                                                    |                                                             AGY panel                                                              |                                                     Grok Build panel                                                      |
-| :------------------------------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------------------------------------------------: |
-| [<img src="docs/screenshots/codex-panel.png" alt="Codex panel" width="160">](docs/screenshots/codex-panel.png) | [<img src="docs/screenshots/claude-panel.png" alt="Claude Code panel" width="160">](docs/screenshots/claude-panel.png) | [<img src="docs/screenshots/agy-panel.png" alt="AGY (Antigravity CLI) context panel" width="160">](docs/screenshots/agy-panel.png) | [<img src="docs/screenshots/grok-panel.png" alt="Grok Build context panel" width="160">](docs/screenshots/grok-panel.png) |
-
-## Contribute
-
-Issues, improvements, and forks are welcome. To check a change:
-
-```sh
-npm ci
-npm test
-python3 -m unittest discover -s tests -v
-herdr-app check mods/herdr-context-facey
-```
-
-JavaScript, JSON, and Markdown use Prettier; Python uses Ruff. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for formatting commands and live checks.
-[Architecture and reader protocol](docs/ARCHITECTURE.md) explains the controller,
-provider adapters, and regression-test boundaries.
-[RECIPE.md](RECIPE.md) describes how the mod works and how to rebuild it.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and checks,
+[architecture](docs/ARCHITECTURE.md) for the code structure, and
+[RECIPE.md](RECIPE.md) for the Herdr recipe.
 
 ## License
 
-[MIT](LICENSE). Use, modify, fork, and redistribute it, including commercially;
-keep the copyright and license notice with your copy.
+[MIT](LICENSE).
