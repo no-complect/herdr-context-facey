@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Herdr Context Facey — four agent sidebars</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #101112;
+      }
+      main {
+        box-sizing: border-box;
+        display: grid;
+        grid-template-columns: repeat(4, 282px);
+        gap: 16px;
+        width: 1208px;
+        height: 720px;
+        padding: 16px;
+      }
+      figure {
+        display: grid;
+        grid-template-rows: 24px 660px;
+        gap: 4px;
+        margin: 0;
+      }
+      figcaption {
+        color: #e5e7eb;
+        font:
+          500 16px / 24px ui-monospace,
+          monospace;
+        text-align: center;
+      }
+      img {
+        display: block;
+        width: 282px;
+        height: 660px;
+        object-fit: contain;
+      }
+    </style>
+  </head>
+  <body>
+    <main aria-label="Context mapping for four supported agents">
+      <figure>
+        <figcaption>Codex</figcaption>
+        <img src="screenshots/codex-panel.png" alt="Codex context sidebar" />
+      </figure>
+      <figure>
+        <figcaption>Claude Code</figcaption>
+        <img src="screenshots/claude-panel.png" alt="Claude Code context sidebar" />
+      </figure>
+      <figure>
+        <figcaption>AGY (Antigravity CLI)</figcaption>
+        <img src="screenshots/agy-panel.png" alt="AGY context sidebar" />
+      </figure>
+      <figure>
+        <figcaption>Grok Build</figcaption>
+        <img src="screenshots/grok-panel.png" alt="Grok Build context sidebar" />
+      </figure>
+    </main>
+  </body>
+</html>
