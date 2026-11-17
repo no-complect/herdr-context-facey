@@ -286,3 +286,38 @@ test("replay zero is valid and providers without compaction retain Recorded hist
   assert(!find(tree, "context-history"));
   inspector.close();
 });
+
+test("section controls retain their actions and use the current callback context", async () => {
+  const { view, host, context } = await nativeView();
+  const inspector = view();
+  let refresh;
+  inspector.refresh = (cx, force) => {
+    refresh = { cx, force };
+  };
+  let tree = inspector.render(context());
+  const fresh = context();
+  find(tree, "context-refresh").ops.on_click[0]({}, fresh);
+  assert.equal(refresh.cx, fresh);
+  assert.equal(refresh.force, true);
+  find(tree, "context-session").ops.on_click[0]({}, fresh);
+  assert.equal(inspector.picker, true);
+  find(tree, "context-history").ops.on_click[0]({}, fresh);
+  assert.equal(inspector.history, true);
+  find(tree, "context-segment").ops.on_click[0]({}, fresh);
+  assert.equal(inspector.history, false);
+  find(tree, "context-about").ops.on_click[0]({}, fresh);
+  tree = inspector.render(context());
+  assert(text(find(tree, "context-notes")).includes("Synthetic fixture"));
+  assert(text(tree).includes("Hide count details"));
+  host.props = { overlay: "dialog" };
+  tree = inspector.render(context());
+  assert(text(tree).includes("Close"));
+  find(tree, "context-expand").ops.on_click[0]({}, fresh);
+  assert.deepEqual(host.closedOverlays, ["dialog"]);
+  const before = host.notifications;
+  tree.ops.on_size_change[0]({ width: 721 }, fresh);
+  tree.ops.on_size_change[0]({ width: 721 }, fresh);
+  assert.equal(inspector.width, 721);
+  assert.equal(host.notifications, before + 1);
+  inspector.close();
+});
