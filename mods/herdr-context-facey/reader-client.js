@@ -1,56 +1,66 @@
+// Source: src/reader-client.ts. Run npm run build to update the runtime JavaScript.
 import { categories } from "./model.js";
 import { providerNames } from "./target.js";
-
 export class ReaderError extends Error {
+  code;
   constructor(code, message) {
     super(message);
     this.code = code;
   }
 }
-
+function record(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+const optionalString = (value) => value === undefined || typeof value === "string";
 function validSession(session) {
   return (
-    session &&
+    record(session) &&
     typeof session.id === "string" &&
     session.id.length > 0 &&
     typeof session.path === "string" &&
     session.path.length > 0 &&
+    typeof session.provider === "string" &&
     Object.keys(providerNames).includes(session.provider)
   );
 }
-
 function validEvent(event) {
   return (
-    event &&
-    /^\d+$/.test(event.id) &&
+    record(event) &&
     typeof event.id === "string" &&
+    /^\d+$/.test(event.id) &&
     typeof event.source === "string" &&
+    count(event.line) &&
     Number.isInteger(event.line) &&
     event.line > 0 &&
     typeof event.field === "string" &&
+    typeof event.record_hash === "string" &&
     /^[a-f0-9]{64}$/.test(event.record_hash) &&
     typeof event.label === "string" &&
     typeof event.teaser === "string" &&
+    count(event.segment) &&
     Number.isInteger(event.segment) &&
     event.segment >= 0 &&
+    count(event.turn) &&
     Number.isInteger(event.turn) &&
     event.turn >= 0 &&
     categories.some((category) => category.id === event.category) &&
-    Number.isFinite(event.tokens) &&
-    event.tokens >= 0 &&
-    Number.isFinite(event.bytes) &&
-    event.bytes >= 0
+    count(event.tokens) &&
+    count(event.bytes) &&
+    (event.timestamp == null || optionalString(event.timestamp)) &&
+    (event.persistent == null || optionalString(event.persistent)) &&
+    (event.protected === undefined || typeof event.protected === "boolean")
   );
 }
-
-const count = (value) => Number.isFinite(value) && value >= 0;
+const count = (value) => typeof value === "number" && Number.isFinite(value) && value >= 0;
 function validUsage(usage) {
   return (
-    usage &&
+    record(usage) &&
     count(usage.input) &&
     (usage.cached == null || count(usage.cached)) &&
     (usage.output == null || count(usage.output)) &&
-    (usage.window == null || (count(usage.window) && usage.window > 0))
+    (usage.window == null || (count(usage.window) && usage.window > 0)) &&
+    optionalString(usage.kind) &&
+    optionalString(usage.label)
   );
 }
 function validCandidates(candidates) {
@@ -58,13 +68,13 @@ function validCandidates(candidates) {
     Array.isArray(candidates) &&
     candidates.every(
       (candidate) =>
-        candidate &&
+        record(candidate) &&
         ["id", "path", "name"].every((key) => typeof candidate[key] === "string") &&
-        count(candidate.updated),
+        count(candidate.updated) &&
+        (candidate.cwd == null || optionalString(candidate.cwd)),
     )
   );
 }
-
 /** Validate the process boundary before any response reaches panel state. */
 export function decodeResponse(raw) {
   let data;
@@ -79,13 +89,17 @@ export function decodeResponse(raw) {
       "The session reader returned an invalid or incompatible response.",
     );
   };
-  if (!data || data.version !== 1) invalid();
+  if (!record(data) || data.version !== 1) return invalid();
   if (data.status !== "error" && data.error !== undefined) invalid();
   if (data.candidates !== undefined && !validCandidates(data.candidates)) invalid();
   switch (data.status) {
     case "error":
-      if (typeof data.error?.code !== "string" || typeof data.error?.message !== "string")
-        invalid();
+      if (
+        !record(data.error) ||
+        typeof data.error.code !== "string" ||
+        typeof data.error.message !== "string"
+      )
+        return invalid();
       throw new ReaderError(data.error.code, data.error.message);
     case "detail":
       if (
@@ -96,7 +110,7 @@ export function decodeResponse(raw) {
       break;
     case "selection_required":
       if (
-        !["no_session", "ambiguous_session"].includes(data.code) ||
+        (data.code !== "no_session" && data.code !== "ambiguous_session") ||
         typeof data.reason !== "string" ||
         !Array.isArray(data.candidates)
       )
@@ -110,16 +124,25 @@ export function decodeResponse(raw) {
         typeof data.partial !== "boolean" ||
         !Array.isArray(data.events) ||
         !data.events.every(validEvent) ||
-        typeof data.capabilities?.compaction !== "boolean" ||
-        typeof data.capabilities?.historical_usage !== "boolean" ||
+        !record(data.capabilities) ||
+        typeof data.capabilities.compaction !== "boolean" ||
+        typeof data.capabilities.historical_usage !== "boolean" ||
         !Array.isArray(data.usage_samples) ||
         !Array.isArray(data.notes) ||
         !data.notes.every((note) => typeof note === "string") ||
         (data.reported != null && !validUsage(data.reported)) ||
         !data.usage_samples.every(
           (sample) =>
-            validUsage(sample) && Number.isInteger(sample.afterId) && sample.afterId >= -1,
-        )
+            record(sample) &&
+            validUsage(sample) &&
+            typeof sample.afterId === "number" &&
+            Number.isInteger(sample.afterId) &&
+            sample.afterId >= -1,
+        ) ||
+        (data.model != null && typeof data.model !== "string") ||
+        !optionalString(data.method) ||
+        !optionalString(data.match) ||
+        (data.files !== undefined && !count(data.files))
       )
         invalid();
       break;
@@ -135,11 +158,11 @@ export function decodeResponse(raw) {
     default:
       invalid();
   }
+  // Each discriminant and the fields consumed by the panel were checked above.
   return data;
 }
-
 export function createReader(exec, readerPath) {
-  return async (request, timeout = 15000) => {
+  async function read(request, timeout = 15000) {
     let result;
     try {
       result = await exec(
@@ -169,5 +192,6 @@ export function createReader(exec, readerPath) {
       );
     }
     return response;
-  };
+  }
+  return read;
 }

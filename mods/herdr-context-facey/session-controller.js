@@ -1,10 +1,9 @@
+// Source: src/session-controller.ts. Run npm run build to update the runtime JavaScript.
 import { providerNames } from "./target.js";
-
 function sessionKey(data) {
-  const session = data?.session;
+  const session = data && "session" in data ? data.session : null;
   return session ? JSON.stringify([session.provider, session.id, session.path]) : null;
 }
-
 function eventKey(data, event) {
   return event
     ? JSON.stringify([
@@ -17,7 +16,6 @@ function eventKey(data, event) {
       ])
     : null;
 }
-
 /** Coordinates reads without depending on Herdr, timers, or native editor handles. */
 export class SessionController {
   constructor(readSession) {
@@ -35,7 +33,9 @@ export class SessionController {
     this.detailRequestId = 0;
     this.closed = false;
   }
-
+  get snapshot() {
+    return this.data?.status === "snapshot" ? this.data : null;
+  }
   targetIdentity(target) {
     return JSON.stringify([
       target?.address,
@@ -44,30 +44,29 @@ export class SessionController {
       target?.pid,
       target?.title,
       target?.cwd,
-      this.manual[target?.address],
+      target ? this.manual[target.address] : undefined,
     ]);
   }
-
   clearDetail() {
     this.detailRequestId += 1;
     this.pinned = null;
     this.details = null;
     this.detailKey = null;
   }
-
   close() {
     this.closed = true;
     this.requestId += 1;
     this.detailRequestId += 1;
     this.busy = false;
   }
-
   acceptSnapshot(data) {
     const previous = this.data;
+    const previousSnapshot = this.snapshot;
+    const nextSnapshot = data.status === "snapshot" ? data : null;
     const sameSession = sessionKey(previous) === sessionKey(data);
     const preserved = (id) => {
-      const before = previous?.events?.find((event) => event.id === String(id));
-      const after = data.events?.find((event) => event.id === String(id));
+      const before = previousSnapshot?.events.find((event) => event.id === String(id));
+      const after = nextSnapshot?.events.find((event) => event.id === String(id));
       return before && after && eventKey(previous, before) === eventKey(data, after);
     };
     if (!sameSession || (this.pinned !== null && !preserved(this.pinned))) {
@@ -78,7 +77,6 @@ export class SessionController {
     }
     this.data = data;
   }
-
   async refresh(target, force = false) {
     if (this.closed) return;
     const identity = this.targetIdentity(target);
@@ -96,7 +94,7 @@ export class SessionController {
       this.error = "Context currently reads local sessions only.";
       return;
     }
-    if (!Object.keys(providerNames).includes(target.provider)) {
+    if (!target.provider || !Object.keys(providerNames).includes(target.provider)) {
       this.error =
         "Focus a Codex, Claude Code, Grok Build or Antigravity CLI session to inspect it.";
       return;
@@ -106,35 +104,41 @@ export class SessionController {
     try {
       const data = await this.readSession({
         ...target,
+        provider: target.provider,
         path: this.manual[target.address],
-        revision: force ? null : this.data?.revision,
+        revision: force ? null : this.snapshot?.revision,
       });
       if (this.closed || requestId !== this.requestId) return;
       if (data.status === "unchanged") {
-        if (sessionKey(data) !== sessionKey(this.data) || data.revision !== this.data?.revision) {
+        const previous = this.snapshot;
+        if (
+          !previous ||
+          sessionKey(data) !== sessionKey(previous) ||
+          data.revision !== previous.revision
+        ) {
           throw new Error(
             "The reader returned an unchanged response for another session. Refresh again.",
           );
         }
-        this.data = { ...this.data, ...data, status: "snapshot" };
+        this.data = { ...previous, ...data, status: "snapshot" };
       } else {
         this.acceptSnapshot(data);
       }
       this.error = null;
     } catch (error) {
       if (!this.closed && requestId === this.requestId) {
-        this.error = String(error.message || error);
+        this.error = errorMessage(error);
       }
     } finally {
       if (requestId === this.requestId) this.busy = false;
     }
   }
-
   async inspect(event) {
-    if (this.closed || !this.data?.session) return;
-    const current = this.data.events.find((candidate) => candidate.id === event.id);
-    const key = eventKey(this.data, event);
-    if (!current || key !== eventKey(this.data, current)) return;
+    const data = this.snapshot;
+    if (this.closed || !data) return;
+    const current = data.events.find((candidate) => candidate.id === event.id);
+    const key = eventKey(data, event);
+    if (!current || key !== eventKey(data, current)) return;
     this.pinned = event.id;
     if (key === this.detailKey) return;
     const requestId = ++this.detailRequestId;
@@ -144,8 +148,8 @@ export class SessionController {
       const detail = await this.readSession(
         {
           action: "detail",
-          session: this.data.session,
-          revision: this.data.revision,
+          session: data.session,
+          revision: data.revision,
           source: event.source,
           line: event.line,
           field: event.field,
@@ -159,8 +163,12 @@ export class SessionController {
       if (detail.truncated) this.details += "\n\n[Preview limited to 24,000 characters]";
     } catch (error) {
       if (!this.closed && requestId === this.detailRequestId) {
-        this.details = String(error.message || "The source could not be previewed.");
+        this.details = errorMessage(error, "The source could not be previewed.");
       }
     }
   }
+}
+function errorMessage(error, fallback) {
+  const message = error && typeof error === "object" && "message" in error ? error.message : null;
+  return String(message || fallback || error);
 }

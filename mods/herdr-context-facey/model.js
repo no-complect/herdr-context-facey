@@ -14,14 +14,12 @@ export const categories = [
 ];
 export const categoryOf = (id) =>
   categories.find((category) => category.id === id) ?? categories[0];
-
 export function formatCount(value) {
-  if (!Number.isFinite(value)) return "—";
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
   return String(Math.round(value));
 }
-
 // "Segment" is recorded evidence since the last logged compaction, with the
 // latest persistent instruction/tool snapshots. It is not a reconstructed prompt.
 export function selectEvents(data, cutoff = null, history = false) {
@@ -39,7 +37,6 @@ export function selectEvents(data, cutoff = null, history = false) {
     return event.segment === segment;
   });
 }
-
 export function estimatedTotals(events) {
   const counts = Object.fromEntries(categories.map((category) => [category.id, 0]));
   for (const event of events) {
@@ -47,7 +44,6 @@ export function estimatedTotals(events) {
   }
   return { counts, sum: Object.values(counts).reduce((sum, value) => sum + value, 0) };
 }
-
 export function reportedUsageAt(data, cutoff) {
   if (cutoff === null) return data?.reported;
   return (data?.usage_samples ?? []).filter((sample) => sample.afterId <= cutoff).at(-1) ?? null;

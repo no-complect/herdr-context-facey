@@ -76,7 +76,13 @@ layout can instead assign it to opening and closing the embedded side panel.
 
 ## Built from
 
-One mod at `mods/herdr-context-facey/`:
+One installable mod at `mods/herdr-context-facey/`. Author its six UI/client modules
+as strict TypeScript in `src/`, with shared domain/protocol types in
+`src/contracts.d.ts`. Run `npm ci` and `npm run build` to emit and format the runtime
+JavaScript listed below. Keep generated `.js` files in the published mod folder:
+Herdr requires `main.js`, and installing the mod must not require a build tool.
+
+Runtime files:
 
 - `main.js`: GPUI `View` using `div`, `svg`, `uniform_list`, `h_flex`, `v_flex`,
   native `InputState`/`Input`, `EditorState`/`Editor`, and `Scrollbar`.
@@ -84,7 +90,7 @@ One mod at `mods/herdr-context-facey/`:
   previews and replay state, independently of native UI handles.
 - `reader-client.js`: Python subprocess invocation and versioned JSON validation.
 - `model.js`: category palette, formatting, totals, compaction slicing and
-  historical usage lookup. Pure JavaScript.
+  historical usage lookup. Pure functions compiled from TypeScript.
 - `target.js`: pure session selection from focus, panes and terminals; keeps
   retained targets inside their original space and tab.
 - `visibility.js`: traverse arbitrary layout IDs, respecting `hidden` and active

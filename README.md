@@ -74,7 +74,10 @@ python3 -m unittest discover -s tests -v
 herdr-app check mods/herdr-context-facey
 ```
 
-JavaScript, JSON, and Markdown use Prettier; Python uses Ruff. See
+The six production modules are authored in strict TypeScript under `src/`.
+`npm test` builds and type-checks them, then tests the emitted JavaScript that
+Herdr loads. Compiled `.js` files remain in the mod folder for copy-only installation.
+TypeScript, JavaScript, JSON, and Markdown use Prettier; Python uses Ruff. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for formatting commands and live checks.
 [Architecture and reader protocol](docs/ARCHITECTURE.md) explains the controller,
 provider adapters, and regression-test boundaries.

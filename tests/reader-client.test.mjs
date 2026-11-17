@@ -115,6 +115,33 @@ test("expected reader outcomes preserve their distinct codes", () => {
   );
 });
 
+test("optional snapshot metadata is validated before it reaches typed UI state", () => {
+  for (const patch of [
+    { model: 42 },
+    { method: {} },
+    { match: [] },
+    { files: "one" },
+    { reported: { input: 1, label: 42 } },
+    { events: [{ ...response.events[0], timestamp: {} }] },
+    { events: [{ ...response.events[0], persistent: 42 }] },
+    { events: [{ ...response.events[0], protected: "false" }] },
+  ]) {
+    assert.throws(
+      () => decodeResponse(JSON.stringify({ ...response, ...patch })),
+      (error) => error.code === "invalid_response",
+    );
+  }
+});
+
+test("unrecorded optional metadata retains the reader's null values", () => {
+  const nullable = {
+    ...response,
+    events: [{ ...response.events[0], timestamp: null, persistent: null }],
+    candidates: [{ id: "one", path: session.path, name: "One", updated: 0, cwd: null }],
+  };
+  assert.deepEqual(decodeResponse(JSON.stringify(nullable)), nullable);
+});
+
 test("summary and preview responses cannot be exchanged", async () => {
   const read = createReader(
     async () => ({ code: 0, stdout: JSON.stringify(response) }),

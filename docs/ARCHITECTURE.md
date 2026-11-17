@@ -1,8 +1,12 @@
 # Architecture
 
-The mod is native GPUI JavaScript with a Python standard-library subprocess for
-local session files. Installation still copies one mod directory. There is no
+The mod is authored in strict TypeScript and compiled to native GPUI JavaScript,
+with a Python standard-library subprocess for local session files. Installation
+still copies one mod directory. There is no
 runtime package installation, service, transcript cache, or browser layer.
+
+The six source modules in `src/` emit the corresponding runtime files below.
+`src/contracts.d.ts` defines the protocol and domain types without runtime output.
 
 ```text
 mods/herdr-context-facey/
@@ -71,6 +75,13 @@ Every response has `version: 1` and one status:
 | `detail`             | Verified preview text and optional truncation flag.                       |
 | `error`              | An error object with a stable code and safe user-facing message.          |
 
+The TypeScript client narrows responses by `status`; summary calls cannot return
+a detail response to the controller. `SessionController.snapshot` exposes only
+snapshot data to the view, while selection-required data retains its distinct
+reason and candidates. Parsed JSON starts as `unknown` and crosses into this
+typed union only after validation, including optional UI metadata and nullable
+unrecorded values.
+
 Error codes distinguish `invalid_request`, `stale_event`, `unsupported_format`,
 `permission_denied`, `source_unavailable` and unexpected `reader_failed` errors.
 The JavaScript client separately classifies launch/timeout failures as
@@ -98,12 +109,21 @@ through the real CLI and production JavaScript response validator.
 
 ```sh
 npm test
+npm run typecheck:herdr
 python3 -m unittest discover -s tests -v
 npm run format:check
 python3 -m ruff check .
 python3 -m ruff format --check .
 herdr-app check mods/herdr-context-facey
 ```
+
+`npm test` compiles the source first and tests the emitted JavaScript. The build
+targets ES2022 modules, preserving the native runtime's imports and initialization
+order. View state uses TypeScript `declare` fields because GPUI initializes state
+in `init`; these annotations emit no class-field initializers. CI checks the portable
+host contracts and compile-time negative examples, then verifies the checked-in
+runtime matches a fresh build. A local check against Herdr's generated declarations
+checks the installed host version as well; see [Contributing](../CONTRIBUTING.md).
 
 Node tests use Python for the cross-language check. Fixture homes are temporary;
 tests do not read the developer's actual provider sessions. A native Herdr load

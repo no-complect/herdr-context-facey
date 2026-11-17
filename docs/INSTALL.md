@@ -19,6 +19,9 @@ usually `~/.config/herdr-app/mods/`. Review an existing destination before
 updating it. Herdr supplies its own generated editor type files.
 Copy the whole folder, including `reader/`; the JavaScript client and Python reader
 share a versioned protocol and should be updated together.
+The folder includes compiled JavaScript, including Herdr's required `main.js`.
+TypeScript sources live in `src/` for development; do not rename installed mod
+files to `.ts`. No TypeScript compiler or Node installation is needed to use the mod.
 
 When replacing an older inspector copy such as `tuuxic-context`, also update the
 existing Context block's `content.mod` to `herdr-context-facey` and point its

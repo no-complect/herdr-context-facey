@@ -1,3 +1,4 @@
+// Source: src/main.ts. Run npm run build to update the runtime JavaScript.
 import { View, div, svg, uniform_list } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState, Editor, EditorState, Scrollbar } from "gpui-base";
 import {
@@ -5,11 +6,11 @@ import {
   exec,
   focused,
   panes,
-  terminals,
+  terminals as hostTerminals,
   layout,
-  props,
-  theme,
-  settings,
+  props as hostProps,
+  theme as hostTheme,
+  settings as hostSettings,
   openOverlay,
   closeOverlay,
 } from "herdr";
@@ -25,12 +26,14 @@ import { layoutVisibility } from "./visibility.js";
 import { focusedSession, providerNames } from "./target.js";
 import { SessionController } from "./session-controller.js";
 import { createReader } from "./reader-client.js";
-
+const props = () => hostProps();
+const theme = () => hostTheme();
+const settings = () => hostSettings();
+const terminals = () => hostTerminals();
 const MOD = "herdr-context-facey";
 // Copies share this module, so keyboard-opened dialogs can inherit the panel's
 // selected session without persisting an attachment or any conversation text.
 let panelInstance = null;
-
 export default class ContextInspector extends View {
   init(_props, cx) {
     const options = props() ?? {};
@@ -64,31 +67,28 @@ export default class ContextInspector extends View {
     cx.timer.every(5000, (cx) => this.refresh(cx));
     this.refresh(cx);
   }
-
   close() {
     this.closed = true;
     this.session.close();
     this.code?.release();
     if (panelInstance === this) panelInstance = null;
   }
-
   target() {
-    if (props()?.target) return props().target;
+    const target = props()?.target;
+    if (target) return target;
     if (this.expandedTarget) return this.expandedTarget;
     this.lastTarget = focusedSession(focused(), panes(), terminals(), this.lastTarget);
     return this.lastTarget;
   }
-
   attachment() {
     const target = this.target();
-    return { target, selectedPath: this.session.manual[target?.address] };
+    return { target, selectedPath: target ? this.session.manual[target.address] : undefined };
   }
-
   visible() {
     if (props()?.overlay) return true;
     if (props()?.pane) {
       const allPanes = panes();
-      const pane = allPanes.find((candidate) => candidate.pane === props().pane);
+      const pane = allPanes.find((candidate) => candidate.pane === props()?.pane);
       return Boolean(
         pane &&
         pane.tab === focused()?.tab &&
@@ -100,7 +100,6 @@ export default class ContextInspector extends View {
     }
     return layoutVisibility(layout(), MOD, props()?.blockId) !== false;
   }
-
   syncPreview() {
     const key =
       this.session.pinned !== null && this.session.details !== null ? this.session.detailKey : null;
@@ -120,7 +119,6 @@ export default class ContextInspector extends View {
       });
     }
   }
-
   refresh(cx, force = false) {
     if (this.closed || (!force && !this.visible())) return;
     const pending = this.session.refresh(this.target(), force);
@@ -132,7 +130,6 @@ export default class ContextInspector extends View {
       cx.notify();
     });
   }
-
   inspect(event, cx) {
     const pending = this.session.inspect(event);
     this.syncPreview();
@@ -144,7 +141,6 @@ export default class ContextInspector extends View {
     });
     cx.notify();
   }
-
   expand() {
     openOverlay({
       mod: MOD,
@@ -154,7 +150,6 @@ export default class ContextInspector extends View {
       props: this.attachment(),
     });
   }
-
   button(id, text, action, on = false) {
     const t = theme();
     return div()
@@ -173,7 +168,6 @@ export default class ContextInspector extends View {
       })
       .child(text);
   }
-
   gauge(usage) {
     const t = theme();
     const percent = usage?.window ? (usage.input / usage.window) * 100 : null;
@@ -218,8 +212,8 @@ export default class ContextInspector extends View {
               .flex_1()
               .min_w(0)
               .truncate()
-              .tooltip(this.session.data?.model || "")
-              .child(this.session.data?.model || "Model not recorded"),
+              .tooltip(this.session.snapshot?.model || "")
+              .child(this.session.snapshot?.model || "Model not recorded"),
           )
           .child(
             div()
@@ -260,8 +254,7 @@ export default class ContextInspector extends View {
           ),
       );
   }
-
-  breakdown(events, cx) {
+  breakdown(events, _cx) {
     const t = theme(),
       { counts, sum } = estimatedTotals(events);
     const active = categories.filter((c) => counts[c.id]);
@@ -299,7 +292,7 @@ export default class ContextInspector extends View {
             div()
               .text_color(t.muted)
               .child(
-                this.session.data?.partial
+                this.session.snapshot?.partial
                   ? "CAPTURED TEXT · ESTIMATED · PARTIAL"
                   : "CAPTURED TEXT · ESTIMATED",
               ),
@@ -344,8 +337,7 @@ export default class ContextInspector extends View {
         ),
       );
   }
-
-  pickerView(cx) {
+  pickerView(_cx) {
     const t = theme(),
       choices = this.session.data?.candidates ?? [];
     return v_flex()
@@ -357,7 +349,11 @@ export default class ContextInspector extends View {
         div()
           .text_size(11)
           .text_color(t.muted)
-          .child(this.session.data?.reason || "Select a recorded session for this terminal."),
+          .child(
+            (this.session.data?.status === "selection_required"
+              ? this.session.data.reason
+              : null) || "Select a recorded session for this terminal.",
+          ),
       )
       .child(
         this.button("context-follow", "Follow focused session automatically", (cx) => {
@@ -407,8 +403,7 @@ export default class ContextInspector extends View {
         el.child(div().text_size(12).text_color(t.dim).child("No local session files found.")),
       );
   }
-
-  rows(events, cx) {
+  rows(events, _cx) {
     const t = theme();
     const shown = events
       .filter(
@@ -533,10 +528,9 @@ export default class ContextInspector extends View {
         ),
       );
   }
-
-  preview(cx) {
+  preview(_cx) {
     const t = theme(),
-      event = this.session.data?.events?.find((e) => e.id === this.session.pinned);
+      event = this.session.snapshot?.events.find((e) => e.id === this.session.pinned);
     return v_flex()
       .flex_1()
       .min_w(0)
@@ -558,69 +552,73 @@ export default class ContextInspector extends View {
         ),
       )
       .when(Boolean(event), (el) =>
-        el
-          .child(
-            h_flex()
-              .gap(8)
-              .items_center()
+        event
+          ? el
+              .child(
+                h_flex()
+                  .gap(8)
+                  .items_center()
+                  .child(
+                    div()
+                      .flex_1()
+                      .min_w(0)
+                      .truncate()
+                      .text_size(12)
+                      .font_semibold()
+                      .text_color(t.foreground)
+                      .child(event.label),
+                  )
+                  .when(Boolean(this.session.pinned), (e) =>
+                    e.child(
+                      this.button("context-unpin", "Unpin", () => {
+                        this.session.clearDetail();
+                      }),
+                    ),
+                  ),
+              )
               .child(
                 div()
-                  .flex_1()
-                  .min_w(0)
-                  .truncate()
-                  .text_size(12)
-                  .font_semibold()
-                  .text_color(t.foreground)
-                  .child(event.label),
+                  .text_size(11)
+                  .text_color(categoryOf(event.category).color)
+                  .child(
+                    `${categoryOf(event.category).label} · ~${formatCount(event.tokens)} tokens · ${formatCount(event.bytes)} bytes`,
+                  ),
               )
-              .when(Boolean(this.session.pinned), (e) =>
-                e.child(
-                  this.button("context-unpin", "Unpin", () => {
-                    this.session.clearDetail();
-                  }),
-                ),
-              ),
-          )
-          .child(
-            div()
-              .text_size(11)
-              .text_color(categoryOf(event.category).color)
               .child(
-                `${categoryOf(event.category).label} · ~${formatCount(event.tokens)} tokens · ${formatCount(event.bytes)} bytes`,
-              ),
-          )
-          .child(
-            div()
-              .text_size(10)
-              .text_color(t.dim)
-              .truncate()
-              .tooltip(`${event.source}:${event.line}`)
-              .child(`${event.source.split("/").pop()}:${event.line}`),
-          )
-          .child(
-            this.button("context-replay-event", "Replay through this event", () => {
-              this.session.cutoff = Number(event.id);
-            }),
-          )
-          .child(
-            this.code
-              ? Editor.new(this.code).flex_1().min_h(0)
-              : div()
-                  .text_size(12)
-                  .text_color(t.muted)
-                  .child(this.session.details || "Loading preview…"),
-          ),
+                div()
+                  .text_size(10)
+                  .text_color(t.dim)
+                  .truncate()
+                  .tooltip(`${event.source}:${event.line}`)
+                  .child(`${event.source.split("/").pop()}:${event.line}`),
+              )
+              .child(
+                this.button("context-replay-event", "Replay through this event", () => {
+                  this.session.cutoff = Number(event.id);
+                }),
+              )
+              .child(
+                this.code
+                  ? Editor.new(this.code).flex_1().min_h(0)
+                  : div()
+                      .text_size(12)
+                      .text_color(t.muted)
+                      .child(this.session.details || "Loading preview…"),
+              )
+          : el,
       );
   }
-
   render(cx) {
     const t = theme(),
       target = this.target();
     this.syncPreview();
     const next = this.session.targetIdentity(target);
     if (next !== this.session.identity && this.visible()) this.refresh(cx);
-    const events = selectEvents(this.session.data, this.session.cutoff, this.history),
-      usage = reportedUsageAt(this.session.data, this.session.cutoff);
+    const snapshot = this.session.snapshot;
+    const reason =
+      this.session.data?.status === "selection_required" ? this.session.data.reason : null;
+    const events = selectEvents(snapshot, this.session.cutoff, this.history),
+      usage = reportedUsageAt(snapshot, this.session.cutoff);
     const wide = this.width > 720;
     const body = (wide ? h_flex().gap(12) : v_flex().gap(10)).items_stretch();
     return v_flex()
@@ -691,117 +689,117 @@ export default class ContextInspector extends View {
             .text_size(10)
             .text_color(t.dim)
             .child(
-              `Following ${providerNames[target.provider] ?? target.provider} · ${target.address}`,
+              `Following ${target.provider ? providerNames[target.provider] : target.provider} · ${target.address}`,
             ),
         ),
       )
       .when(Boolean(this.session.error), (el) =>
         el.child(div().text_size(12).text_color(t.blocked).child(this.session.error)),
       )
-      .when(Boolean(this.session.data?.reason) || this.picker, (el) =>
-        el.child(this.pickerView(cx)),
+      .when(Boolean(reason) || this.picker, (el) => el.child(this.pickerView(cx)))
+      .when(!snapshot?.session.path && !reason && !this.session.error, (el) =>
+        el.child(
+          div()
+            .p(12)
+            .text_size(12)
+            .text_color(t.muted)
+            .child(
+              this.session.busy
+                ? "Reading the local session…"
+                : "Select a Codex, Claude Code, Grok Build or Antigravity CLI terminal to inspect its recorded context contributions.",
+            ),
+        ),
       )
-      .when(
-        !this.session.data?.session?.path && !this.session.data?.reason && !this.session.error,
-        (el) =>
-          el.child(
-            div()
-              .p(12)
-              .text_size(12)
-              .text_color(t.muted)
+      .when(Boolean(snapshot?.session.path), (el) =>
+        snapshot
+          ? el
+              .child(this.gauge(usage))
+              .child(this.breakdown(events, cx))
               .child(
-                this.session.busy
-                  ? "Reading the local session…"
-                  : "Select a Codex, Claude Code, Grok Build or Antigravity CLI terminal to inspect its recorded context contributions.",
-              ),
-          ),
-      )
-      .when(Boolean(this.session.data?.session?.path), (el) =>
-        el
-          .child(this.gauge(usage))
-          .child(this.breakdown(events, cx))
-          .child(
-            h_flex()
-              .gap(5)
-              .items_center()
-              .flex_wrap()
-              .when(this.session.data.capabilities.compaction, (row) =>
-                row
-                  .child(
-                    this.button(
-                      "context-segment",
-                      "Since compact",
-                      () => {
-                        this.history = false;
-                      },
-                      !this.history,
-                    ),
+                h_flex()
+                  .gap(5)
+                  .items_center()
+                  .flex_wrap()
+                  .when(snapshot.capabilities.compaction, (row) =>
+                    row
+                      .child(
+                        this.button(
+                          "context-segment",
+                          "Since compact",
+                          () => {
+                            this.history = false;
+                          },
+                          !this.history,
+                        ),
+                      )
+                      .child(
+                        this.button(
+                          "context-history",
+                          "Whole history",
+                          () => {
+                            this.history = true;
+                          },
+                          this.history,
+                        ),
+                      ),
                   )
-                  .child(
-                    this.button(
-                      "context-history",
-                      "Whole history",
-                      () => {
-                        this.history = true;
-                      },
-                      this.history,
+                  .when(!snapshot.capabilities.compaction, (row) =>
+                    row.child(div().text_size(11).text_color(t.muted).child("Recorded history")),
+                  )
+                  .child(div().flex_1())
+                  .when(this.session.cutoff !== null, (e) =>
+                    e.child(
+                      this.button("context-live", "Back to live", () => {
+                        this.session.cutoff = null;
+                      }),
                     ),
                   ),
               )
-              .when(!this.session.data.capabilities.compaction, (row) =>
-                row.child(div().text_size(11).text_color(t.muted).child("Recorded history")),
-              )
-              .child(div().flex_1())
-              .when(this.session.cutoff !== null, (e) =>
-                e.child(
-                  this.button("context-live", "Back to live", () => {
-                    this.session.cutoff = null;
-                  }),
-                ),
-              ),
-          )
-          .child(
-            body
-              .flex_1()
-              .min_w(0)
-              .min_h(0)
-              .overflow_hidden()
-              .child(this.rows(events, cx).when(wide, (e) => e.h_full()))
-              .child(this.preview(cx).when(wide, (e) => e.h_full())),
-          )
-          .child(
-            h_flex()
-              .gap(6)
-              .items_center()
               .child(
-                this.button(
-                  "context-about",
-                  this.about ? "Hide count details" : "About these counts",
-                  () => {
-                    this.about = !this.about;
-                  },
+                body
+                  .flex_1()
+                  .min_w(0)
+                  .min_h(0)
+                  .overflow_hidden()
+                  .child(this.rows(events, cx).when(wide, (e) => e.h_full()))
+                  .child(this.preview(cx).when(wide, (e) => e.h_full())),
+              )
+              .child(
+                h_flex()
+                  .gap(6)
+                  .items_center()
+                  .child(
+                    this.button(
+                      "context-about",
+                      this.about ? "Hide count details" : "About these counts",
+                      () => {
+                        this.about = !this.about;
+                      },
+                    ),
+                  )
+                  .child(div().flex_1())
+                  .child(div().text_size(9).text_color(t.dim).child("Local · read-only · 5s")),
+              )
+              .when(this.about, (e) =>
+                e.child(
+                  v_flex()
+                    .id("context-notes")
+                    .max_h(145)
+                    .overflow_y_scrollbar()
+                    .gap(5)
+                    .children(
+                      [
+                        snapshot.method,
+                        "The category bar describes recorded text, not an exact live prompt. Compaction and unrecorded runtime data can make the reported total different.",
+                        `Matched: ${snapshot.match}. ${snapshot.files} history file(s).`,
+                        ...(snapshot.notes || []),
+                      ]
+                        .filter((note) => typeof note === "string")
+                        .map((note) => div().text_size(10).text_color(t.dim).child(note)),
+                    ),
                 ),
               )
-              .child(div().flex_1())
-              .child(div().text_size(9).text_color(t.dim).child("Local · read-only · 5s")),
-          )
-          .when(this.about, (e) =>
-            e.child(
-              v_flex()
-                .id("context-notes")
-                .max_h(145)
-                .overflow_y_scrollbar()
-                .gap(5)
-                .children(
-                  [
-                    this.session.data.method,
-                    "The category bar describes recorded text, not an exact live prompt. Compaction and unrecorded runtime data can make the reported total different.",
-                    `Matched: ${this.session.data.match}. ${this.session.data.files} history file(s).`,
-                    ...(this.session.data.notes || []),
-                  ].map((note) => div().text_size(10).text_color(t.dim).child(note)),
-                ),
-            ),
-          ),
+          : el,
       );
   }
 }

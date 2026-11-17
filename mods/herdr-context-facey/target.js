@@ -4,7 +4,6 @@ export const providerNames = {
   grok: "Grok Build",
   agy: "Antigravity CLI",
 };
-
 function providerFor(entry) {
   for (const key of [entry?.app, entry?.report?.app, entry?.program?.key]) {
     if (typeof key !== "string") continue;
@@ -15,29 +14,23 @@ function providerFor(entry) {
   }
   return null;
 }
-
 const supported = (entry) => providerFor(entry) !== null;
-
 function selectedAgent(candidates, selectedAddress) {
   const selected = candidates.find((pane) => pane.terminal === selectedAddress);
   if (selected) return selected;
-
   const working = candidates.filter((pane) => pane.status === "working");
   if (working.length === 1) return working[0];
   return candidates.length === 1 ? candidates[0] : null;
 }
-
 // Opening a shell or the inspector should preserve the selected agent, while
 // moving to another tab must never carry an unrelated conversation along.
 export function focusedSession(focus, allPanes, allTerminals, previous) {
   if (!focus) return null;
-
   const previousInTab =
-    previous?.space === focus.space && previous?.tab === focus.tab ? previous : null;
+    previous?.space === focus.space && previous?.tab === focus.tab ? (previous ?? null) : null;
   let pane = allPanes.find((candidate) => candidate.pane === focus.pane);
   let address = focus.shown || focus.terminal || pane?.terminal;
   let terminal = allTerminals.find((candidate) => candidate.address === address);
-
   if (!(pane?.terminal === address && supported(pane)) && !supported(terminal)) {
     const candidates = allPanes.filter(
       (candidate) => candidate.tab === focus.tab && supported(candidate),
@@ -48,7 +41,6 @@ export function focusedSession(focus, allPanes, allTerminals, previous) {
     terminal = allTerminals.find((candidate) => candidate.address === address);
   }
   if (!address) return previousInTab;
-
   const provider = providerFor(terminal) ?? (pane?.terminal === address ? providerFor(pane) : null);
   return {
     address,
