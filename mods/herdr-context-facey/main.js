@@ -20,6 +20,8 @@ import {
   selectEvents,
   estimatedTotals,
   reportedUsageAt,
+  selectVisibleEvents,
+  usagePresentation,
 } from "./model.js";
 import { layoutVisibility } from "./visibility.js";
 import { focusedSession, providerNames } from "./target.js";
@@ -176,11 +178,11 @@ export default class ContextInspector extends View {
 
   gauge(usage) {
     const t = theme();
-    const percent = usage?.window ? (usage.input / usage.window) * 100 : null;
+    const presentation = usagePresentation(usage, this.session.cutoff);
     const color =
-      percent !== null && percent >= 90
+      presentation.severity === "critical"
         ? t.blocked
-        : percent !== null && percent >= 75
+        : presentation.severity === "warning"
           ? "#d4a75c"
           : "#82ac65";
     return v_flex()
@@ -190,21 +192,9 @@ export default class ContextInspector extends View {
           .justify_between()
           .items_end()
           .gap(8)
+          .child(div().text_color(t.muted).text_size(11).child(presentation.label))
           .child(
-            div()
-              .text_color(t.muted)
-              .text_size(11)
-              .child(
-                usage?.label ??
-                  (this.session.cutoff === null ? "LAST REPORTED INPUT" : "REPORTED BY THIS POINT"),
-              ),
-          )
-          .child(
-            div()
-              .text_size(22)
-              .font_semibold()
-              .text_color(color)
-              .child(usage ? formatCount(usage.input) : "—"),
+            div().text_size(22).font_semibold().text_color(color).child(presentation.inputText),
           ),
       )
       .child(
@@ -221,15 +211,7 @@ export default class ContextInspector extends View {
               .tooltip(this.session.data?.model || "")
               .child(this.session.data?.model || "Model not recorded"),
           )
-          .child(
-            div()
-              .flex_none()
-              .child(
-                usage?.window
-                  ? `${formatCount(usage.window)} window · ${percent.toFixed(1)}%`
-                  : "Window size not recorded",
-              ),
-          ),
+          .child(div().flex_none().child(presentation.windowText)),
       )
       .child(
         div()
@@ -237,28 +219,11 @@ export default class ContextInspector extends View {
           .w_full()
           .rounded(2)
           .bg(t.border)
-          .when(percent !== null, (el) =>
-            el.child(
-              div()
-                .h_full()
-                .rounded(2)
-                .w(`${Math.min(100, Math.max(0, percent))}%`)
-                .bg(color),
-            ),
+          .when(presentation.percentage !== null, (el) =>
+            el.child(div().h_full().rounded(2).w(presentation.fill).bg(color)),
           ),
       )
-      .child(
-        div()
-          .text_size(10)
-          .text_color(t.dim)
-          .child(
-            usage
-              ? usage.kind === "context"
-                ? "Grok's recorded context estimate; an in-flight turn may be ahead."
-                : "Reported by the last model request; an in-flight turn may be ahead."
-              : "No model usage sample is recorded yet.",
-          ),
-      );
+      .child(div().text_size(10).text_color(t.dim).child(presentation.note));
   }
 
   breakdown(events, cx) {
@@ -410,18 +375,11 @@ export default class ContextInspector extends View {
 
   rows(events, cx) {
     const t = theme();
-    const shown = events
-      .filter(
-        (e) =>
-          (!this.filter || e.category === this.filter) &&
-          (!this.query ||
-            `${e.label} ${e.teaser} ${categoryOf(e.category).label}`
-              .toLowerCase()
-              .includes(this.query)),
-      )
-      .sort((a, b) =>
-        this.sort === "largest" ? b.tokens - a.tokens : Number(b.id) - Number(a.id),
-      );
+    const shown = selectVisibleEvents(events, {
+      category: this.filter,
+      query: this.query,
+      sort: this.sort,
+    });
     return v_flex()
       .flex_1()
       .min_w(0)
@@ -613,6 +571,130 @@ export default class ContextInspector extends View {
       );
   }
 
+  header(t) {
+    return h_flex()
+      .items_center()
+      .gap(8)
+      .child(svg(`mods/${MOD}/context.svg`).size(15).text_color(t.muted))
+      .child(div().text_size(14).font_semibold().child("Context"))
+      .child(
+        div()
+          .text_size(9)
+          .px(5)
+          .py(2)
+          .rounded(2)
+          .bg(t.surface)
+          .text_color(this.session.cutoff === null ? "#82ac65" : "#d4a75c")
+          .child(this.session.cutoff === null ? "LIVE" : "REPLAY"),
+      )
+      .child(div().flex_1())
+      .child(
+        this.button("context-refresh", this.session.busy ? "Reading…" : "Refresh", (cx) =>
+          this.refresh(cx, true),
+        ),
+      )
+      .child(
+        this.button("context-expand", props()?.overlay ? "Close" : "Expand", () =>
+          props()?.overlay ? closeOverlay(props().overlay) : this.expand(),
+        ),
+      );
+  }
+
+  sessionHeader(target, t) {
+    return h_flex()
+      .gap(6)
+      .items_center()
+      .child(
+        div()
+          .flex_1()
+          .min_w(0)
+          .truncate()
+          .text_size(11)
+          .text_color(t.muted)
+          .tooltip(target?.title || "")
+          .child(target?.title || "Focus an agent session"),
+      )
+      .child(
+        this.button("context-session", "Session", () => {
+          this.picker = !this.picker;
+        }),
+      );
+  }
+
+  historyControls(t) {
+    return h_flex()
+      .gap(5)
+      .items_center()
+      .flex_wrap()
+      .when(this.session.data.capabilities.compaction, (row) =>
+        row
+          .child(
+            this.button(
+              "context-segment",
+              "Since compact",
+              () => {
+                this.history = false;
+              },
+              !this.history,
+            ),
+          )
+          .child(
+            this.button(
+              "context-history",
+              "Whole history",
+              () => {
+                this.history = true;
+              },
+              this.history,
+            ),
+          ),
+      )
+      .when(!this.session.data.capabilities.compaction, (row) =>
+        row.child(div().text_size(11).text_color(t.muted).child("Recorded history")),
+      )
+      .child(div().flex_1())
+      .when(this.session.cutoff !== null, (e) =>
+        e.child(
+          this.button("context-live", "Back to live", () => {
+            this.session.cutoff = null;
+          }),
+        ),
+      );
+  }
+
+  countFooter(t) {
+    return h_flex()
+      .gap(6)
+      .items_center()
+      .child(
+        this.button(
+          "context-about",
+          this.about ? "Hide count details" : "About these counts",
+          () => {
+            this.about = !this.about;
+          },
+        ),
+      )
+      .child(div().flex_1())
+      .child(div().text_size(9).text_color(t.dim).child("Local · read-only · 5s"));
+  }
+
+  countNotes(t) {
+    return v_flex()
+      .id("context-notes")
+      .max_h(145)
+      .overflow_y_scrollbar()
+      .gap(5)
+      .children(
+        [
+          this.session.data.method,
+          "The category bar describes recorded text, not an exact live prompt. Compaction and unrecorded runtime data can make the reported total different.",
+          `Matched: ${this.session.data.match}. ${this.session.data.files} history file(s).`,
+          ...(this.session.data.notes || []),
+        ].map((note) => div().text_size(10).text_color(t.dim).child(note)),
+      );
+  }
+
   render(cx) {
     const t = theme(),
       target = this.target();
@@ -637,54 +719,8 @@ export default class ContextInspector extends View {
           cx.notify();
         }
       })
-      .child(
-        h_flex()
-          .items_center()
-          .gap(8)
-          .child(svg(`mods/${MOD}/context.svg`).size(15).text_color(t.muted))
-          .child(div().text_size(14).font_semibold().child("Context"))
-          .child(
-            div()
-              .text_size(9)
-              .px(5)
-              .py(2)
-              .rounded(2)
-              .bg(t.surface)
-              .text_color(this.session.cutoff === null ? "#82ac65" : "#d4a75c")
-              .child(this.session.cutoff === null ? "LIVE" : "REPLAY"),
-          )
-          .child(div().flex_1())
-          .child(
-            this.button("context-refresh", this.session.busy ? "Reading…" : "Refresh", (cx) =>
-              this.refresh(cx, true),
-            ),
-          )
-          .child(
-            this.button("context-expand", props()?.overlay ? "Close" : "Expand", () =>
-              props()?.overlay ? closeOverlay(props().overlay) : this.expand(),
-            ),
-          ),
-      )
-      .child(
-        h_flex()
-          .gap(6)
-          .items_center()
-          .child(
-            div()
-              .flex_1()
-              .min_w(0)
-              .truncate()
-              .text_size(11)
-              .text_color(t.muted)
-              .tooltip(target?.title || "")
-              .child(target?.title || "Focus an agent session"),
-          )
-          .child(
-            this.button("context-session", "Session", () => {
-              this.picker = !this.picker;
-            }),
-          ),
-      )
+      .child(this.header(t))
+      .child(this.sessionHeader(target, t))
       .when(Boolean(target), (el) =>
         el.child(
           div()
@@ -720,46 +756,7 @@ export default class ContextInspector extends View {
         el
           .child(this.gauge(usage))
           .child(this.breakdown(events, cx))
-          .child(
-            h_flex()
-              .gap(5)
-              .items_center()
-              .flex_wrap()
-              .when(this.session.data.capabilities.compaction, (row) =>
-                row
-                  .child(
-                    this.button(
-                      "context-segment",
-                      "Since compact",
-                      () => {
-                        this.history = false;
-                      },
-                      !this.history,
-                    ),
-                  )
-                  .child(
-                    this.button(
-                      "context-history",
-                      "Whole history",
-                      () => {
-                        this.history = true;
-                      },
-                      this.history,
-                    ),
-                  ),
-              )
-              .when(!this.session.data.capabilities.compaction, (row) =>
-                row.child(div().text_size(11).text_color(t.muted).child("Recorded history")),
-              )
-              .child(div().flex_1())
-              .when(this.session.cutoff !== null, (e) =>
-                e.child(
-                  this.button("context-live", "Back to live", () => {
-                    this.session.cutoff = null;
-                  }),
-                ),
-              ),
-          )
+          .child(this.historyControls(t))
           .child(
             body
               .flex_1()
@@ -769,39 +766,8 @@ export default class ContextInspector extends View {
               .child(this.rows(events, cx).when(wide, (e) => e.h_full()))
               .child(this.preview(cx).when(wide, (e) => e.h_full())),
           )
-          .child(
-            h_flex()
-              .gap(6)
-              .items_center()
-              .child(
-                this.button(
-                  "context-about",
-                  this.about ? "Hide count details" : "About these counts",
-                  () => {
-                    this.about = !this.about;
-                  },
-                ),
-              )
-              .child(div().flex_1())
-              .child(div().text_size(9).text_color(t.dim).child("Local · read-only · 5s")),
-          )
-          .when(this.about, (e) =>
-            e.child(
-              v_flex()
-                .id("context-notes")
-                .max_h(145)
-                .overflow_y_scrollbar()
-                .gap(5)
-                .children(
-                  [
-                    this.session.data.method,
-                    "The category bar describes recorded text, not an exact live prompt. Compaction and unrecorded runtime data can make the reported total different.",
-                    `Matched: ${this.session.data.match}. ${this.session.data.files} history file(s).`,
-                    ...(this.session.data.notes || []),
-                  ].map((note) => div().text_size(10).text_color(t.dim).child(note)),
-                ),
-            ),
-          ),
+          .child(this.countFooter(t))
+          .when(this.about, (e) => e.child(this.countNotes(t))),
       );
   }
 }

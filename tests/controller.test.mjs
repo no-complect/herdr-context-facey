@@ -218,3 +218,60 @@ test("an unchanged response for a different session is rejected", async () => {
   assert.match(c.error, /another session/);
   assert.equal(c.data.session.id, "one");
 });
+
+test("a failed preview can be selected again, while a successful preview stays cached", async () => {
+  const { controller: c, calls } = pendingReader();
+  const read = c.refresh(target());
+  calls[0].resolve(snapshot());
+  await read;
+  const failed = c.inspect(c.data.events[0]);
+  calls[1].reject(new Error("Temporary preview failure"));
+  await failed;
+  assert.equal(c.pinned, "0");
+  assert.equal(c.details, "Temporary preview failure");
+  const retry = c.inspect(c.data.events[0]);
+  assert.equal(calls.length, 3);
+  assert.equal(c.details, null);
+  calls[2].resolve({ version: 1, status: "detail", text: "Recovered preview" });
+  await retry;
+  await c.inspect(c.data.events[0]);
+  assert.equal(calls.length, 3);
+  assert.equal(c.details, "Recovered preview");
+});
+
+test("refresh preserves failed-preview recovery and in-flight retries are deduplicated", async () => {
+  const { controller: c, calls } = pendingReader();
+  let read = c.refresh(target());
+  calls[0].resolve(snapshot());
+  await read;
+  const failed = c.inspect(c.data.events[0]);
+  calls[1].reject(new Error("Temporary preview failure"));
+  await failed;
+  read = c.refresh(target(), true);
+  calls[2].resolve(snapshot());
+  await read;
+  assert.equal(calls.length, 3);
+  const retry = c.inspect(c.data.events[0]);
+  await c.inspect(c.data.events[0]);
+  assert.equal(calls.length, 4);
+  calls[3].resolve({ version: 1, status: "detail", text: "Recovered preview" });
+  await retry;
+  assert.equal(c.details, "Recovered preview");
+});
+
+test("a late failure cannot make a newer successful preview retry unnecessarily", async () => {
+  const { controller: c, calls } = pendingReader();
+  const read = c.refresh(target());
+  calls[0].resolve(snapshot("one", { events: [event(), event("other", { id: "1", line: 2 })] }));
+  await read;
+  const old = c.inspect(c.data.events[0]);
+  const current = c.inspect(c.data.events[1]);
+  calls[2].resolve({ version: 1, status: "detail", text: "Current preview" });
+  await current;
+  calls[1].reject(new Error("Obsolete failure"));
+  await old;
+  await c.inspect(c.data.events[1]);
+  assert.equal(calls.length, 3);
+  assert.equal(c.pinned, "1");
+  assert.equal(c.details, "Current preview");
+});

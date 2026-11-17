@@ -62,6 +62,8 @@ return to automatic following.
 Click a category to filter it, click again or Show all categories to clear.
 Search labels and teasers; Largest sorts by estimated tokens. Clicking a row
 pins its preview. Hover changes color only.
+If a preview read fails, selecting that event again retries it. Pending and
+successful previews remain cached; retries never run automatically.
 
 Replay filters evidence to the selected event and uses the latest usage sample
 available by then. Since compact keeps the newest recorded segment plus latest
@@ -84,7 +86,8 @@ One mod at `mods/herdr-context-facey/`:
   previews and replay state, independently of native UI handles.
 - `reader-client.js`: Python subprocess invocation and versioned JSON validation.
 - `model.js`: category palette, formatting, totals, compaction slicing and
-  historical usage lookup. Pure JavaScript.
+  historical usage lookup, visible-event selection and usage presentation. Pure
+  JavaScript; the View maps severity to native theme colors.
 - `target.js`: pure session selection from focus, panes and terminals; keeps
   retained targets inside their original space and tab.
 - `visibility.js`: traverse arbitrary layout IDs, respecting `hidden` and active

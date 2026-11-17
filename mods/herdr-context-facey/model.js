@@ -22,6 +22,75 @@ export function formatCount(value) {
   return String(Math.round(value));
 }
 
+/**
+ * @typedef {object} DisplayEvent
+ * @property {string} id Recorded ordinal, compared numerically for Timeline.
+ * @property {string} category
+ * @property {string} label
+ * @property {string} teaser
+ * @property {number} tokens Estimated text tokens, independent of reported usage.
+ */
+
+/**
+ * @template {DisplayEvent} T
+ * @param {T[]} events
+ * @param {{category?: string|null, query?: string, sort?: "timeline"|"largest"}} options
+ *   The input handler supplies lowercase query text; whitespace remains significant.
+ * @returns {T[]} A new array containing the original event objects.
+ */
+export function selectVisibleEvents(
+  events,
+  { category = null, query = "", sort = "timeline" } = {},
+) {
+  return events
+    .filter(
+      (event) =>
+        (!category || event.category === category) &&
+        (!query ||
+          `${event.label} ${event.teaser} ${categoryOf(event.category).label}`
+            .toLowerCase()
+            .includes(query)),
+    )
+    .sort((a, b) => (sort === "largest" ? b.tokens - a.tokens : Number(b.id) - Number(a.id)));
+}
+
+/**
+ * @typedef {object} RecordedUsage
+ * @property {number} input Provider-recorded request input or context estimate.
+ * @property {number|null} [window] Absent capacity remains unknown.
+ * @property {string} [kind]
+ * @property {string} [label]
+ */
+
+/**
+ * Display decisions only: the native view resolves severity to current theme colors.
+ * @param {RecordedUsage|null|undefined} usage
+ * @param {number|null} cutoff Null means live; zero is a valid replay position.
+ */
+export function usagePresentation(usage, cutoff = null) {
+  const percentage = usage?.window ? (usage.input / usage.window) * 100 : null;
+  return {
+    label: usage?.label ?? (cutoff === null ? "LAST REPORTED INPUT" : "REPORTED BY THIS POINT"),
+    inputText: usage ? formatCount(usage.input) : "—",
+    percentage,
+    fill: percentage === null ? null : `${Math.min(100, Math.max(0, percentage))}%`,
+    windowText: usage?.window
+      ? `${formatCount(usage.window)} window · ${percentage.toFixed(1)}%`
+      : "Window size not recorded",
+    severity:
+      percentage !== null && percentage >= 90
+        ? "critical"
+        : percentage !== null && percentage >= 75
+          ? "warning"
+          : "normal",
+    note: usage
+      ? usage.kind === "context"
+        ? "Grok's recorded context estimate; an in-flight turn may be ahead."
+        : "Reported by the last model request; an in-flight turn may be ahead."
+      : "No model usage sample is recorded yet.",
+  };
+}
+
 // "Segment" is recorded evidence since the last logged compaction, with the
 // latest persistent instruction/tool snapshots. It is not a reconstructed prompt.
 export function selectEvents(data, cutoff = null, history = false) {

@@ -9,7 +9,7 @@ mods/herdr-context-facey/
   main.js                   GPUI elements, lifecycle, native editor handles
   session-controller.js     Refresh ordering, selected snapshot, pinned previews
   reader-client.js          Subprocess invocation and response validation
-  model.js                  Pure event filtering, estimates and usage replay
+  model.js                  Pure selection, usage presentation, estimates and replay
   target.js                 Herdr focus and supported agent identity
   visibility.js             Layout visibility rules
   inspect_session.py        CLI and final unexpected-failure containment
@@ -38,6 +38,14 @@ no native UI, timer or application-context dependency. The view starts work and
 awaits it in `cx.spawn`; native editor handles stay in the view and are released
 when their preview changes or the view closes.
 
+`main.js` composes named header, session, history-control, footer and count-note
+sections on the same View. Their elements and actions retain the same ownership;
+this is not a nested-view framework. Pure `selectVisibleEvents` and
+`usagePresentation` functions own ordering/filtering and display decisions.
+The view resolves usage severity to theme colors and creates native elements.
+Small JSDoc contracts describe their input shapes; runtime files remain directly
+loadable JavaScript with no compilation step or added runtime dependency.
+
 Every summary request has a monotonically increasing generation. Only the active
 generation can update data, errors or the busy flag. Selecting A, B, then A again
 does not make the first A request current. Closing invalidates pending work.
@@ -53,6 +61,15 @@ returning text. A changed or removed record produces `stale_event` rather than
 text from the replacement record. Appending a different record preserves valid
 previews; replacing a selected record or changing sessions clears preview/replay
 state. No additional copy of the transcript is stored.
+
+A pending or successful preview is reused by event identity. A failed preview
+retains its error text and identity, but selecting it again starts a new request.
+This is an explicit user retry, not an automatic background retry. Request
+generations also protect retry failures from replacing a newer preview.
+
+Refresh keeps the last snapshot and pin visible while reading or after a current
+failure. Loading, a retained snapshot and an error can legitimately coexist;
+presentation code must preserve those combinations rather than force one status.
 
 ## Reader protocol version 1
 
@@ -95,6 +112,13 @@ session replacement, preview invalidation, appends, manual selection and close.
 Python tests cover accounting, path boundaries, malformed records and CLI outcomes.
 The cross-language round-trip test sends synthetic fixtures for all four providers
 through the real CLI and production JavaScript response validator.
+
+View tests execute the actual ES modules using Node VM modules with recording
+native bindings. They cover list ordering and keys, filters, usage thresholds and
+unknowns, replay zero, width breakpoints, retained snapshots, callback contexts,
+manual dialog attachment and editor release. Controller recovery tests cover
+explicit retries, request deduplication and obsolete failures. These host doubles
+do not implement native layout or validate GPUI handles.
 
 ```sh
 npm test

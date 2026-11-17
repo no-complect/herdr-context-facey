@@ -30,6 +30,19 @@ files. No dependencies are needed by the tests; Prettier and Ruff are developmen
 tools only. Node 22 is used in CI. The runtime is native Herdr JavaScript plus
 Python's standard library.
 
+The view tests load the real mod modules in an isolated Node VM and replace only
+Herdr/GPUI bindings with recording host doubles. The test command enables Node's
+experimental VM-module API; its warning is expected and does not affect the mod.
+These checks exercise deferred rows, controls, refresh states and editor cleanup,
+but cannot establish native rendering or native-handle validity. Keep the live
+checks below as a separate release gate.
+
+For display changes, characterize existing behavior before extracting helpers.
+Keep event selection and usage presentation pure in `model.js`; keep native
+elements, callback contexts and editor handles in the View. Preserve element IDs,
+labels, theme colors, layout breakpoints and the distinction between missing and
+zero usage. Treat protocol or provider-accounting changes as separate work.
+
 ## Live checks
 
 Install the mod into Herdr and test a local session. Herdr's native check only
